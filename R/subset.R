@@ -1474,6 +1474,126 @@ subsetGiottoLocsSubcellular = function(gobject,
 
 
 
+
+
+
+
+# slice slots ####
+slice_expression_data = function(gobject,
+                                 slice_obj,
+                                 spat_unit = NULL,
+                                 feat_type = NULL) {
+  avail_ex = list_expression(
+    gobject = gobject,
+    spat_unit = spat_unit,
+    feat_type = feat_type
+  )
+
+  for(ex_i in seq(nrow(avail_ex))) {
+    ex = getExpression(
+      gobject = gobject,
+      spat_unit = avail_ex[ex_i]$spat_unit,
+      feat_type = avail_ex[ex_i]$feat_type,
+      values = avail_ex[ex_i]$name,
+      output = 'exprObj'
+    )
+
+    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+    slice_obj = setExpression(
+      gobject = slice_obj,
+      x = ex,
+      verbose = FALSE,
+      initialize = FALSE
+    )
+    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+  }
+
+  return(slice_obj)
+}
+
+slice_spatial_locs = function(gobject,
+                                 slice_obj,
+                                 spat_unit = NULL,
+                                 feat_type = NULL) {
+  avail_ex = list_expression(
+    gobject = gobject,
+    spat_unit = spat_unit,
+    feat_type = feat_type
+  )
+
+  for(ex_i in seq(nrow(avail_ex))) {
+    ex = getExpression(
+      gobject = gobject,
+      spat_unit = avail_ex[ex_i]$spat_unit,
+      feat_type = avail_ex[ex_i]$feat_type,
+      values = avail_ex[ex_i]$name,
+      output = 'exprObj'
+    )
+
+    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+    slice_obj = setExpression(
+      gobject = slice_obj,
+      x = ex,
+      verbose = FALSE,
+      initialize = FALSE
+    )
+    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+  }
+
+  return(slice_obj)
+}
+
+
+
+
+
+
+
+
+# exported slice functions ####
+
+#' @inheritParams data_access_params
+#' @param spat_unit spatial unit(s) to select
+#' @param feat_type feature type(s) to select
+sliceGiotto = function(
+    gobject,
+    spat_unit = NULL,
+    feat_type = NULL,
+    poly_info = NULL,
+    feat_info = NULL
+) {
+
+  spat_unit = set_default_spat_unit(gobject = gobject,
+                                    spat_unit = spat_unit)
+  feat_type = set_default_feat_type(gobject = gobject,
+                                    spat_unit = spat_unit,
+                                    feat_type = feat_type)
+
+  # make slice gobject
+  opt = getOption('giotto.use_conda')
+  on.exit(options('giotto.use_conda' = opt))
+  options('giotto.use_conda' = FALSE)
+  sliced_gobj = suppressWarnings(giotto())
+
+  sliced_gobj = slice_expression_data(
+    gobject = gobject,
+    slice_obj = sliced_gobj,
+    spat_unit = spat_unit,
+    feat_type = feat_type
+  )
+
+
+
+
+  return(initialize(slice_obj))
+}
+
+
+
+
+
+
+
 # helpers ####
 
 valid_spat_subset_params = function(
