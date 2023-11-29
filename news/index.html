@@ -6,7 +6,7 @@
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
     
 
-    <nav class="navbar fixed-top navbar-dark navbar-expand-lg bg-dark"><div class="container">
+    <nav class="navbar fixed-top navbar-light navbar-expand-lg bg-light"><div class="container">
     
     <a class="navbar-brand me-2" href="../index.html">GiottoClass</a>
 
@@ -20,6 +20,9 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item">
   <a class="nav-link" href="../reference/index.html">Documentation</a>
+</li>
+<li class="active nav-item">
+  <a class="nav-link" href="../news/index.html">News</a>
 </li>
       </ul><form class="form-inline my-2 my-lg-0" role="search">
         <input type="search" class="form-control me-sm-2" aria-label="Toggle navigation" name="search-input" data-search-index="../search.json" id="search-input" placeholder="Search for" autocomplete="off"></form>
@@ -41,11 +44,52 @@
       
     </div>
 
-  </main></div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.0.1" id="giottoclass-001">GiottoClass 0.0.1<a class="anchor" aria-label="anchor" href="#giottoclass-001"></a></h2>
+<div class="section level3">
+<h3 id="breaking-changes-0-0-1">Breaking Changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-0-1"></a></h3>
+<ul><li>Giotto subsetting rework</li>
+</ul></div>
+<div class="section level3">
+<h3 id="added-0-0-1">Added<a class="anchor" aria-label="anchor" href="#added-0-0-1"></a></h3>
+<ul><li>Added <code>terraVectData</code> as virtual parent class for <code>giottoPolygon</code> and <code>giottoPoints</code> classes</li>
+<li>Added <code>$</code> and <code>$&lt;-</code> methods for <code>terraVectData</code>
+</li>
+<li>Added <code>ext&lt;-()</code> method for <code>giottoPolygon</code>, <code>giottoPoints</code>
+</li>
+<li>Added <code>crop()</code> method for <code>giottoLargeImage</code>, <code>giottoPoints</code>
+</li>
+<li>Added <code>[</code> subsetting for <code>giottoPoints</code> and <code>giottoPolygon</code> with numerical, logical, and character (by ID)</li>
+<li>Added <code>as.sf()</code> and <code>as.stars()</code> converters for <code>giottoPoints</code> and <code>giottoPolygon</code>
+</li>
+<li>Added <code><a href="../reference/setGiotto.html">setGiotto()</a></code> generic</li>
+<li>Added <code>gap</code> param to <code><a href="../reference/tessellate.html">tessellate()</a></code> which introduces a variable gap between the polygons tessellated</li>
+<li>Added <code><a href="../reference/generate_grid.html">triGrid()</a></code>
+</li>
+<li>Added <code><a href="../reference/generate_grid.html">orthoGrid()</a></code>
+</li>
+<li>Added DelayedMatrixStats to suggests</li>
+</ul></div>
+<div class="section level3">
+<h3 id="changes-0-0-1">Changes<a class="anchor" aria-label="anchor" href="#changes-0-0-1"></a></h3>
+<ul><li>Improved performance of gefToGiotto()</li>
+<li>Updated <code><a href="../reference/spatIDs-generic.html">spatIDs()</a></code> and <code><a href="../reference/spatIDs-generic.html">featIDs()</a></code> methods for <code>giottoPolygon</code> and <code>giottoPoints</code> to allow returning non-unique IDs</li>
+<li>Added check for <code><a href="../reference/plot-generic.html">plot()</a></code> when <code>giottoPolygon</code> or <code>giottoPoints</code> objects contain no geometries</li>
+<li>Added warning for <code>crop()</code> when <code>giottoLargeImage</code>, <code>giottoPolygon</code>, <code>giottoPoints</code> objects are being cropped with an extent that does not include any information</li>
+<li>Changed: Conversion of <code><a href="../reference/createGiottoPoints.html">createGiottoPoints()</a></code> to a generic function</li>
+<li>Deprecate: <code>radius</code> param in favor of <code>shape_size</code> for <code><a href="../reference/tessellate.html">tessellate()</a></code>
+</li>
+<li>Fixed: python <code><a href="../reference/install_github_link_pip.html">install_github_link_pip()</a></code> param</li>
+<li>Fixed: python <code>create_Anndata</code> added to <code>globals.R</code>
+</li>
+</ul></div>
+</div>
+  </main><aside class="col-md-3"><nav id="toc"><h2>On this page</h2>
+    </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p></p><p>Developed by Ruben Dries, Jiaji George Chen, Guo-Cheng Yuan, Matthew O’Brien, <a href="https://josschavezf.github.io" class="external-link">Joselyn Chávez</a>.</p>
+  <p></p><p>Developed by <a href="https://www.drieslab.com" class="external-link">Ruben Dries</a>, Jiaji George Chen, <a href="https://labs.icahn.mssm.edu/yuanlab/" class="external-link">Guo-Cheng Yuan</a>, Matthew O’Brien, <a href="https://josschavezf.github.io" class="external-link">Joselyn C. Chávez-Fuentes</a>, Edward Ruiz.</p>
 </div>
 
 <div class="pkgdown-footer-right">
