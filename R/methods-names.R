@@ -16,17 +16,16 @@ NULL
 #' @param x object
 NULL
 
+
+# colnames ####
+
 #' @rdname row-plus-colnames-generic
 #' @export
 setMethod("colnames", signature(x = "exprObj"), function(x) colnames(x[]))
 
 #' @rdname row-plus-colnames-generic
 #' @export
-setMethod("colnames", signature(x = "cellMetaObj"), function(x) colnames(x[]))
-
-#' @rdname row-plus-colnames-generic
-#' @export
-setMethod("colnames", signature(x = "featMetaObj"), function(x) colnames(x[]))
+setMethod("colnames", signature(x = "metaData"), function(x) colnames(x[]))
 
 #' @rdname row-plus-colnames-generic
 #' @export
@@ -42,6 +41,7 @@ setMethod("colnames", signature(x = "dimObj"), function(x) colnames(x[]))
 
 
 
+# rownames ####
 
 #' @rdname row-plus-colnames-generic
 #' @export
@@ -53,7 +53,7 @@ setMethod("rownames", signature(x = "dimObj"), function(x) rownames(x[]))
 
 
 
-
+# dimnames ####
 
 #' @rdname dimnames
 #' @export
@@ -62,3 +62,19 @@ setMethod("dimnames", signature(x = "exprObj"), function(x) dimnames(x[]))
 #' @rdname dimnames
 #' @export
 setMethod("dimnames", signature(x = "dimObj"), function(x) dimnames(x[]))
+
+
+
+# names ####
+#' @export
+setMethod("names", signature("metaData"), function(x) names(x[]))
+
+
+
+
+
+
+
+
+
+

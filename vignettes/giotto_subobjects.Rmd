@@ -1,0 +1,50 @@
+# Giotto Subobjects
+
+*Giotto* exports a set of S4 subobjects that wrap common datatypes for more convenient manipulation within the `giotto` object structure and so that helpful generic methods can be defined against them to facilitate data exploration.
+
+
+<details><summary>Implementation Status</summary>
+**key:**   
+&#x26D4; Will not implement    
+&#x2714; Implemented    
+&#x274C; Not yet implemented  
+
+### Subset & extract generics
+
+| subobject | `show()` | `plot()` | logical subset | index subset | character subset | `[]` drop | `$` |
+|---------|:------:|:------:|:------:|:------:|:------:|:------:|:------:|
+| exprObj | &#x2714; | &#x26D4; | &#x2714; | &#x2714; | &#x274C; | &#x2714; | &#x26D4; | &#x2714; |
+| cellMetaObj | &#x2714; | &#x26D4; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+| featMetaObj | &#x2714; | &#x26D4; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+| spatLocsObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+| dimObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+
+### Names generics
+| subobject | `names()` | `colnames()` | `rownames()` | `dimnames()` |
+|---------|:------:|:------:|:------:|:------:|
+| exprObj | &#x26D4; | &#x2714; | &#x2714; | &#x2714; |
+| cellMetaObj | &#x2714; | &#x2714; | &#x26D4; | &#x274C; |
+| featMetaObj | &#x2714; | &#x2714; | &#x26D4; | &#x274C; |
+| spatLocsObj || &#x2714; | &#x26D4; | &#x274C; |
+| dimObj || &#x2714; | &#x2714; | &#x2714; |
+
+
+### Spatial generics
+| subobject | `spatShift()` | `flip()` | `spin()` | `t()` | `shear()` |
+|-----------|:-----:|:-----:|:-----:|:-----:|:-----:|
+| spatLocsObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x274C; |
+| spatialNetworkObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x274C; |
+| giottoPoints | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x274C; |
+| giottoPolygon | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x274C; |
+| giottoLargeImage | &#x2714; | &#x2714; | &#x274C; | &#x2714; | &#x274C; |
+
+</details>
+
+
+
+
+
+
+
+
+
