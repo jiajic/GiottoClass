@@ -9,15 +9,24 @@
 &#x2714; Implemented    
 &#x274C; Not yet implemented  
 
+### Print generics
+| subobject | `show()` | `plot()` |
+|---|:------:|:------:|
+| exprObj | &#x2714; | &#x26D4; |
+| cellMetaObj | &#x2714; | &#x26D4; |
+| featMetaObj | &#x2714; | &#x26D4; |
+| spatLocsObj | &#x2714; | &#x2714; |
+| dimObj | &#x2714; | &#x2714; |
+
 ### Subset & extract generics
 
-| subobject | `show()` | `plot()` | logical subset | index subset | character subset | `[]` drop | `$` |
-|---------|:------:|:------:|:------:|:------:|:------:|:------:|:------:|
-| exprObj | &#x2714; | &#x26D4; | &#x2714; | &#x2714; | &#x274C; | &#x2714; | &#x26D4; | &#x2714; |
-| cellMetaObj | &#x2714; | &#x26D4; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
-| featMetaObj | &#x2714; | &#x26D4; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
-| spatLocsObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
-| dimObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+| subobject | logical subset | index subset | character subset | `[]` drop | `$` |
+|---------|:------:|:------:|:------:|:------:|:------:|
+| exprObj | &#x2714; | &#x2714; | &#x274C; | &#x2714; | &#x26D4; | &#x2714; |
+| cellMetaObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+| featMetaObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+| spatLocsObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+| dimObj | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
 
 ### Names generics
 | subobject | `names()` | `colnames()` | `rownames()` | `dimnames()` |
