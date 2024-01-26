@@ -113,15 +113,15 @@
 
 
 <dt>maximum_distance</dt>
-<dd><p>distance cuttof for Delaunay neighbors to consider. If "auto", "upper wisker" value of the distance vector between neighbors is used; see the boxplotgraphics documentation for more details.(default = "auto")</p></dd>
+<dd><p>distance cuttof for Delaunay neighbors to consider. If "auto", "upper whisker" value of the distance vector between neighbors is used; see the boxplotgraphics documentation for more details.(default = "auto")</p></dd>
 
 
 <dt>minimum_k</dt>
-<dd><p>minimum number of neigbhours if maximum_distance != NULL</p></dd>
+<dd><p>minimum number of neighbours if maximum_distance != NULL</p></dd>
 
 
 <dt>options</dt>
-<dd><p>(geometry) String containing extra control options for the underlying Qhull command; see the Qhull documentation (../doc/qhull/html/qdelaun.html) for the available options. (default = 'Pp', do not report precision problems)</p></dd>
+<dd><p>(geometry) String containing extra control options for the underlying Qhull command; see the <a href="http://www.qhull.org/html/qdelaun.htm" class="external-link">Qhull documentation</a> for the available options. (default = 'Pp', do not report precision problems)</p></dd>
 
 
 <dt>Y</dt>
@@ -137,15 +137,16 @@
 
 
 <dt>verbose</dt>
-<dd><p>verbose</p></dd>
+<dd><p>be verbose</p></dd>
 
 
 <dt>return_gobject</dt>
-<dd><p>boolean: return giotto object (default = TRUE)</p></dd>
+<dd><p>logical. return giotto object (default = TRUE)</p></dd>
 
 
 <dt>output</dt>
-<dd><p>object type to return spatial network as when return_gobject = FALSE. (default: 'spatialNetworkObj')</p></dd>
+<dd><p>character. Object type to return spatial network as when
+<code>return_gobject = FALSE</code>. (default: 'spatialNetworkObj')</p></dd>
 
 
 <dt>...</dt>

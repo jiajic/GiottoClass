@@ -66,9 +66,9 @@
 <span>  feat_type <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  spat_unit <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">new_metadata</span>,</span>
-<span>  by_column <span class="op">=</span> <span class="cn">F</span>,</span>
-<span>  column_feat_ID <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  vector_name <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  vector_name <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  by_column <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  column_feat_ID <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -90,16 +90,16 @@
 <dd><p>new metadata to use)</p></dd>
 
 
+<dt>vector_name</dt>
+<dd><p>(optional) custom name if you provide a single vector</p></dd>
+
+
 <dt>by_column</dt>
 <dd><p>merge metadata based on <em>feat_ID</em> column in <code><a href="fDataDT.html">fDataDT</a></code></p></dd>
 
 
 <dt>column_feat_ID</dt>
 <dd><p>column name of new metadata to use if by_column = TRUE</p></dd>
-
-
-<dt>vector_name</dt>
-<dd><p>(optional) custom name if you provide a single vector</p></dd>
 
 </dl></div>
     <div class="section level2">

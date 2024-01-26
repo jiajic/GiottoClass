@@ -55,17 +55,31 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="0.1.3" id="giottoclass-013">GiottoClass 0.1.3<a class="anchor" aria-label="anchor" href="#giottoclass-013"></a></h2>
+<h2 class="pkg-version" data-toc-text="0.1.3" id="giottoclass-013-20240112">GiottoClass 0.1.3 (2024/01/12)<a class="anchor" aria-label="anchor" href="#giottoclass-013-20240112"></a></h2>
+<div class="section level3">
+<h3 id="bug-fixes-0-1-3">bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-3"></a></h3>
+<ul><li>fix unexpected sorting in <code><a href="../reference/addCellMetadata.html">addCellMetadata()</a></code> and <code><a href="../reference/addFeatMetadata.html">addFeatMetadata()</a></code> <a href="https://github.com/drieslab/Giotto/issues/853" class="external-link">#853</a> by rbutleriii</li>
+</ul></div>
 <div class="section level3">
 <h3 id="new-0-1-3">new<a class="anchor" aria-label="anchor" href="#new-0-1-3"></a></h3>
-<ul><li>vignette for image tools</li>
+<ul><li>
+<code>init_gobject</code> param in <code><a href="../reference/loadGiotto.html">loadGiotto()</a></code> to control whether object initialization is also performed after load</li>
+<li>vignette for image tools</li>
 </ul></div>
 <div class="section level3">
 <h3 id="enhancements-0-1-3">enhancements<a class="anchor" aria-label="anchor" href="#enhancements-0-1-3"></a></h3>
-<ul><li>more subobjects respond to <code>colnames</code>, <code>rownames</code>, <code>dimnames</code> # GiottoClass 0.1.2 (2024/01/02)</li>
+<ul><li>ID sorts now use <code><a href="https://rdrr.io/pkg/gtools/man/mixedsort.html" class="external-link">gtools::mixedsort()</a></code> <a href="https://github.com/drieslab/Giotto/issues/853" class="external-link">#853</a> by rbutleriii</li>
+<li>more subobjects respond to <code>colnames</code>, <code>rownames</code>, <code>dimnames</code>
+</li>
+<li>
+<code><a href="../reference/plot-generic.html">plot()</a></code> and <code>show()</code> now handle 3D <code>spatLocsObj</code>
+</li>
 </ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.1.2" id="giottoclass-012-20240102">GiottoClass 0.1.2 (2024/01/02)<a class="anchor" aria-label="anchor" href="#giottoclass-012-20240102"></a></h2>
 <div class="section level3">
-<h3 id="added-0-1-3">Added<a class="anchor" aria-label="anchor" href="#added-0-1-3"></a></h3>
+<h3 id="added-0-1-2">Added<a class="anchor" aria-label="anchor" href="#added-0-1-2"></a></h3>
 <ul><li>Added: <code>max_window</code> and <code>colors</code> slots to <code>giottoLargeImage</code>. Use <code>GiottoClass:::.update_giotto_image()</code> to update outdated objects.</li>
 <li>Added: <code><a href="../reference/dot-bitdepth.html">.bitdepth()</a></code> internal function to detect image bitdepth from sampled values</li>
 <li>Added: re-export <code><a href="https://drieslab.github.io/Giotto/reference/getMonochromeColors.html" class="external-link">getMonochromeColors()</a></code> from <em>GiottoUtils</em>
@@ -77,7 +91,7 @@
 </li>
 </ul></div>
 <div class="section level3">
-<h3 id="bug-fixes-0-1-3">bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-3"></a></h3>
+<h3 id="bug-fixes-0-1-2">bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-1-2"></a></h3>
 <ul><li>param fixes in raster <code><a href="../reference/calculateOverlap.html">calculateOverlap()</a></code> workflows</li>
 </ul></div>
 </div>

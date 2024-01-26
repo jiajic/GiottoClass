@@ -66,6 +66,7 @@
 <span>  load_params <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  reconnect_giottoImage <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  python_path <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  init_gobject <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -86,6 +87,11 @@
 
 <dt>python_path</dt>
 <dd><p>(optional) manually set your python path</p></dd>
+
+
+<dt>init_gobject</dt>
+<dd><p>logical. Whether to initialize the <code>giotto</code> object after
+loading. (default = TRUE)</p></dd>
 
 
 <dt>verbose</dt>
