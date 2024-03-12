@@ -1156,6 +1156,7 @@ createMetafeats <- function(
         spat_unit = spat_unit,
         feat_type = feat_type,
         values = values,
+        stat = "mean",
         output = "exprObj"
     )
 
@@ -1163,20 +1164,26 @@ createMetafeats <- function(
     ## calculate metafeat ##
     res_list <- list()
 
+    # iterate through clusters while applying a specified statistical operation
+    # per cell across the specified features for that feat_cluster.
+
     for (id in sort(unique(feat_clusters))) {
         clus_id <- id
 
         selected_feats <- names(feat_clusters[feat_clusters == clus_id])
         sub_mat <- expr_values[][rownames(expr_values[]) %in% selected_feats, ]
 
-        # calculate mean
+        # calculate statistic
         if (length(selected_feats) == 1) {
-            mean_score <- sub_mat
-        } else {
-            mean_score <- colMeans_flex(sub_mat)
+            score <- sub_mat
+        } else if (is.character(stat)) {
+            score <- switch(stat,
+                "mean" = colMeans_flex(sub_mat),
+                "sum" = colSums_flex(sub_mat)
+            )
         }
 
-        res_list[[id]] <- mean_score
+        res_list[[id]] <- score
     }
 
     res_final <- data.table::as.data.table(t(do.call("rbind", res_list)))
