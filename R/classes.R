@@ -1531,7 +1531,7 @@ featureNetwork <- setClass(
 
 ## giottoImage class ####
 
-# * definition ####
+## * definition ####
 # giottoImage class
 
 #' @title S4 giottoImage Class
@@ -1675,26 +1675,23 @@ giottoLargeImage <- setClass(
             )
         }
 
-        # 0.1.x release adds giottoImageStack
-        # deprecate
-
     }
     return(x)
 }
 
 
 
-## giottoImageStack class ####
+## giottoArrayImage ####
+## * definition #####
 
-## * definition ####
-# giottoImageStack class
+giottoArrayImage <- setClass(
+    Class = "giottoArrayImage",
+    contains = "nameData",
+    slots = c(
+        data = "array",
+        extent = "ANY",
+        irange = "numeric"
+    )
+)
 
-# giottoImageStack <- setClass(
-#   Class = "giottoImageStack",
-#
-#   slots = c(
-#     name = 'character',
-#     images = 'giottoLargeImage',
-#     weight = 'numeric'
-#   )
-# )
+
