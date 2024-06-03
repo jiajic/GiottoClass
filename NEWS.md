@@ -1,4 +1,10 @@
 
+# GiottoClass 0.4.0
+
+## new
+- `shear()` transforms
+
+
 # GiottoClass 0.3.2
 
 ## breaking changes
