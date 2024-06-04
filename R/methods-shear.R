@@ -21,9 +21,39 @@ setMethod(
         x,
         ...
     ) {
-        
+        x[] <- data.table::as.data.table(x[], geom = "XY") %>%
+            .shear_dt(...) %>%
+            as.polygons()
+        return(x)
     }
 )
+
+
+
+.shear_dt <- function(
+        x, rad = NULL, deg = NULL, lin = NULL, extent = x, x0 = NULL, y0 = NULL
+) {
+    x <- data.table::as.data.table(x)
+    extent <- ext(extent)
+    
+    if (!is.null(lin)) {
+        return(.shear_dt_lin(x, lin, x0, y0))
+    }
+}
+
+.shear_dt_lin <- function(x, lin, x0, y0) {
+    checkmate::assert_data_table(x)
+    checkmate::assert_numeric(lin, len = 2L)
+    x0 <- x0 %null% 0
+    y0 <- y0 %null% 0
+
+    xnew <- x[, x + (lin[1L] / (y - y0))]
+    ynew <- x[, y + (lin[2L] / (x - x0))]
+    
+    x[, x := xnew]
+    x[, y := ynew]
+    return(x)
+}
 
 
 
