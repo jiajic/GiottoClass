@@ -1508,6 +1508,25 @@ featureNetwork <- setClass(
 
 # IMAGES ####
 
+## giottoArrayImage class ####
+
+giottoArrayImage <- setClass(
+    Class = "giottoArrayImage",
+    contains = c("nameData"),
+    slots = c(
+        data = "array",
+        scale_factor = "numeric",
+        resolution = "numeric",
+        boundaries = "numeric"
+    ),
+    prototype = list(
+        name = "test",
+        scale_factor = c(1,1),
+        resolution = c(1,1),
+        boundaries = c(-180, 180, -90, 90)
+    )
+)
+
 ## giottoImage class ####
 
 # * definition ####
