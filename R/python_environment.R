@@ -714,7 +714,7 @@ set_giotto_python_path <- function(
 #' @name .install_py_pkg_reticulate
 #' @param package name of python package
 #' @param env name of the environment into which the python
-#' package should be installed.
+#' package should be installed. NULL will use the currently active one
 #' @details
 #' Installs `package` to python `env` after prompting user.
 #' Installation is done via `py_install` from the
@@ -793,7 +793,7 @@ checkPythonPackage <- function(package_name = NULL,
         ))
     }
     # Find path to currently initialized python env
-    path_to_env <- reticulate::py_config()$pythonhome
+    path_to_env <- reticulate::py_config()$executable
     if (!grepl(env_to_use, path_to_env)) {
         env_err_msg <- paste0(
             "Provided python environment `",
