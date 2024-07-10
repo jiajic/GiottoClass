@@ -730,7 +730,7 @@ set_giotto_python_path <- function(
     if (resp != 0) {
         try_install <- tryCatch(expr = {
             reticulate::py_install(
-                package = package,
+                packages = package,
                 envname = env
             )
             return(TRUE)
