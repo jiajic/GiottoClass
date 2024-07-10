@@ -793,7 +793,7 @@ checkPythonPackage <- function(package_name = NULL,
         ))
     }
     # Find path to currently initialized python env
-    path_to_env <- reticulate::py_config()$executable
+    path_to_env <- reticulate::py_config()$prefix
     if (!grepl(env_to_use, path_to_env)) {
         env_err_msg <- paste0(
             "Provided python environment `",
