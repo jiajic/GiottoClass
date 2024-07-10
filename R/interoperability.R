@@ -222,10 +222,11 @@ anndataToGiotto <- function(
         }
     }
 
-    # Required step to properly initialize reticualte
-    instrs <- createGiottoInstructions(python_path = python_path)
+    # Required step to properly initialize reticulate
+    set_giotto_python_path(python_path = python_path)
 
-    scanpy_installed <- checkPythonPackage("scanpy", env_to_use = env_name)
+    checkPythonPackage("anndata", env_to_use = env_name)
+    checkPythonPackage("scanpy", env_to_use = env_name)
     # should trigger a stop() downstream if not installed
 
     # Import ad2g, a python module for parsing anndata
@@ -612,7 +613,8 @@ giottoToAnnData <- function(
         stop(wrap_msg("Please provide a valid Giotto Object for conversion."))
     }
 
-    scanpy_installed <- checkPythonPackage("scanpy", env_to_use = env_name)
+    checkPythonPackage("anndata", env_to_use = env_name)
+    checkPythonPackage("scanpy", env_to_use = env_name)
 
     # Python module import
     g2ad_path <- system.file("python", "g2ad.py", package = "GiottoClass")
