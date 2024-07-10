@@ -818,12 +818,13 @@ checkPythonPackage <- function(package_name = NULL,
     # a. a python env is now active
     # b. the env is the one you asked for
     
-    # env_str_location <- GiottoUtils::str_locate2(path_to_env, env_to_use)[2]
-    # # Change env_to_use from name of environment
-    # # to the full environment path
-    # env_to_use <- substr(path_to_env, 1, env_str_location)
+    env_str_location <- GiottoUtils::str_locate2(path_to_env, env_to_use)[2]
+    # Change env_to_use from name of environment
+    # to the full environment path
+    env_to_use <- substr(path_to_env, 1, env_str_location)
 
-    env_to_use <- NULL # allow reticulate to use the active env
+    env_to_use <- path_to_env
+
 
     # If a github link is provided, install it and exit
     if (!is.null(github_package_url)) {
