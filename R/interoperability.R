@@ -261,7 +261,6 @@ anndataToGiotto <- function(
     gobject <- createGiottoObject(
         expression = X,
         spatial_locs = sp,
-        instructions = instrs,
         h5_file = h5_file
     )
 
