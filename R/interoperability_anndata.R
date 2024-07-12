@@ -1,5 +1,176 @@
+# anndata object interoperability
 
-## anndata object ####
+# reader definition ####
+setClass(
+    "AnndataReader",
+    representation = list(
+        adata = "ANY",
+        dim_names = "list",
+        layers = "character",
+        internal_funs = "list",
+        external_funs = "list"
+    ),
+    prototype = list(
+        adata = NULL,
+        dim_names = list(NULL, NULL),
+        layers = NA_character_,
+        internal_funs = list(),
+        external_funs = list()
+    )
+)
+
+# * initialize ####
+setMethod("initialize", signature("AnndataReader"), function(.Object, ...) {
+    x <- methods::callNextMethod(.Object, ...)
+    
+    # return early if empty
+    if (is.null(x@adata)) return(x)
+    
+    # load
+    if (is.character(x@adata)) {
+        checkmate::assert_file_exists(x@adata)
+        package_check("anndata", repository = "pip")
+        AD <- reticulate::import(
+            "anndata", convert = FALSE, delay_load = TRUE
+        )
+        x@adata <- AD$read_h5ad(x@adata)
+    } else {
+        if (!inherits(x@adata, "anndata._core.anndata.AnnData")) {
+            stop("Input must be either a filepath to an anndata .h5ad or ",
+                 "an anndata python object\n")
+        }
+    }
+    
+    a <- x@adata # abbreviate for easier reference
+    
+    # populate layers info
+    if (is.na(x@layers)) {
+        x@layers <- lyrs <- names(a$layers$`_data`)
+    }
+    
+    # layer selection function
+    .ad_layer <- function(layer) {
+        if (length(x@layers) == 0L || is.na(x@layers)) {
+            stop("no layers in this anndata object\n")
+        }
+        layer <- match.arg(layer, choices = x@layers)
+        return(a$layers[layer])
+    }
+    
+    # internal functions --------------------------------------------- #
+    .p2r <- function(x) {
+        reticulate::py_to_r(x)
+    }
+    .ad_matrix = function(layer, convert = TRUE, transpose = TRUE) {
+        if (!missing(layer)) a <- .ad_layer(layer)
+        GiottoUtils::from_scipy_sparse(a$X, transpose = transpose)
+    }
+    .ad_cell_meta <- function(layer, convert = TRUE) {
+        if (!missing(layer)) a <- .ad_layer(layer)
+        res <- a$obs
+        if (convert) return(data.table::setDT(.p2r(res)))
+        return(res)
+    }
+    .ad_feat_meta <- function(layer, convert = TRUE) {
+        if (!missing(layer)) a <- .ad_layer(layer)
+        res <- a$var
+        if (convert) return(data.table::setDT(.p2r(res)))
+        return(res)
+    }
+    .ad_cell_ids <- function(layer, convert = TRUE) {
+        if (!missing(layer)) a <- .ad_layer(layer)
+        res <- a$obs_names$values
+        if (convert) return(as.character(.p2r(res)))
+        return(res)
+    }
+    .ad_feat_ids <- function(layer, convert = TRUE) {
+        if (!missing(layer)) a <- .ad_layer(layer)
+        res <- a$var_names$values
+        if (convert) return(as.character(.p2r(res)))
+        return(res)
+    }
+    .ad_uns <- function(uns_key, layer, convert = FALSE) {
+        if (!missing(layer)) a <- .ad_layer(layer)
+        res <- a$uns[uns_key]
+        if (convert) return(.p2r(res))
+        return(res)
+    }
+    # ----------------------------------------------------------------- #
+    
+    x@internal_funs <- list(
+        .p2r = .p2r,
+        .ad_matrix = .ad_matrix,
+        .ad_cell_meta = .ad_cell_meta,
+        .ad_feat_meta = .ad_feat_meta,
+        .ad_cell_ids = .ad_cell_ids,
+        .ad_feat_ids = .ad_feat_ids,
+        .ad_uns = .ad_uns
+    )
+    
+    # external functions ---------------------------------------------- #
+    load_cellmeta <- function(spat_unit = "cell", feat_type = "rna", layer) {
+        cx <- .ad_cell_meta(layer)
+        cx[, "cell_ID" := x@dim_names[[2L]]]
+        createCellMetaObj(
+            metadata = cx,
+            spat_unit = spat_unit,
+            feat_type = feat_type,
+            provenance = spat_unit,
+            verbose = FALSE
+        )
+    }
+    load_featmeta <- function(spat_unit = "cell", feat_type = "rna", layer) {
+        fx <- .ad_feat_meta(layer)
+        fx[, "feat_ID" := x@dim_names[[1L]]]
+        createFeatMetaObj(
+            metadata = fx,
+            spat_unit = spat_unit,
+            feat_type = feat_type,
+            provenance = spat_unit,
+            verbose = FALSE
+        )
+    }
+    load_expression <- function(
+        spat_unit = "cell", feat_type = "rna", name = "anndata_matrix", layer
+    ) {
+        ex <- .ad_matrix(layer, transpose = TRUE)
+        dimnames(ex) <- x@dim_names
+        createExprObj(
+            expression_data = ex,
+            name = name,
+            spat_unit = spat_unit,
+            feat_type = feat_type,
+            provenance = spat_unit
+        )
+    }
+    
+    
+    x@external_funs <- list(
+        load_cellmeta = load_cellmeta,
+        load_featmeta = load_featmeta,
+        load_expression = load_expression
+    )
+    
+    # populate dim_names info
+    x@dim_names <- list(.ad_feat_ids(), .ad_cell_ids())
+    
+    
+    
+    return(x)
+})
+
+# * show ####
+setMethod("show", signature("AnndataReader"), function(object) {
+    if (is.null(object@adata)) {
+        cat(sprintf("NULL <%s> \n", class(object)))
+        return(invisible())
+    }
+    
+    cat(sprintf("<%s> containing:\n", class(object)))
+    print(object@adata)
+})
+
+
 
 
 #' @title Check Scanpy Installation
