@@ -1052,6 +1052,11 @@ nnNetObj <- setClass("nnNetObj",
         msg <- 'Column "cell_ID" for cell ID was not found'
         errors <- c(errors, msg)
     }
+    
+    if (any(is.na(object[]$cell_ID))) {
+        msg <- "No NA values allowed in cell_ID column"
+        errors <- c(errors, msg)
+    }
 
     if (length(errors) == 0) TRUE else errors
 }
