@@ -298,12 +298,12 @@ evaluate_input <- function(type, x, ...) {
     if (!any(class(spatial_locs) %in% c(
         "data.table", "data.frame", "matrix", "character"
     ))) {
-        .gstop("spatial_locs needs to be a data.table or data.frame-like object
+        stop("spatial_locs needs to be a data.table or data.frame-like object
             or a path to one of these")
     }
     if (inherits(spatial_locs, "character")) {
         if (!file.exists(spatial_locs)) {
-            .gstop("path to spatial locations does not exist")
+            stop("path to spatial locations does not exist")
         }
         spatial_locs <- data.table::fread(input = spatial_locs, nThread = cores)
     } else {
@@ -342,7 +342,7 @@ evaluate_input <- function(type, x, ...) {
 
     # check number of columns: too few
     if (ncol(spatial_locs) < 2) {
-        .gstop("There need to be at least 2 numeric columns for spatial
+        stop("There need to be at least 2 numeric columns for spatial
             locations \n")
     }
 
