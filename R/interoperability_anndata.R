@@ -58,9 +58,6 @@ setMethod("initialize", signature("AnndataReader"), function(.Object, ...) {
     }
     
     # internal functions --------------------------------------------- #
-    .p2r <- function(x) {
-        reticulate::py_to_r(x)
-    }
     .ad_matrix = function(layer, convert = TRUE, transpose = TRUE) {
         if (!missing(layer)) a <- .ad_layer(layer)
         GiottoUtils::from_scipy_sparse(a$X, transpose = transpose)
@@ -148,7 +145,8 @@ setMethod("initialize", signature("AnndataReader"), function(.Object, ...) {
     x@external_funs <- list(
         load_cellmeta = load_cellmeta,
         load_featmeta = load_featmeta,
-        load_expression = load_expression
+        load_expression = load_expression,
+        py_to_r = .p2r
     )
     
     # populate dim_names info
@@ -221,6 +219,11 @@ check_py_for_scanpy <- function() {
         cat("Required Python module scanpy has been previously installed.
             Proceeding with conversion.\n")
     }
+}
+
+# shorthand for py to r conversion
+.p2r <- function(x) {
+    reticulate::py_to_r(x)
 }
 
 
