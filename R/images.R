@@ -2761,7 +2761,7 @@ ometif_to_tif <- function(input_file,
         page <- 1L # default to page 1
         fname_page <- ""
     }
-    a$page <- a$page - 1L # to zero indexed
+    page <- page - 1L # to zero indexed
 
     # decide output filename
     fname <- sub(
