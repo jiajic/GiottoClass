@@ -2807,7 +2807,7 @@ ometif_to_tif <- function(input_file,
 .tifffile_write <- function(x, output_file) {
     checkmate::assert_character(output_file)
     TIF <- reticulate::import("tifffile", convert = FALSE)
-    tif_writer <- TIF$TiffWriter(output_file)
+    tif_writer <- TIF$TiffWriter(output_file, bigtiff = TRUE)
     on.exit(tif_writer$close())
     TIF$TiffWriter$write(x)
 }
