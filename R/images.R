@@ -2789,7 +2789,7 @@ ometif_to_tif <- function(input_file,
     
     # page selection
     npages <- length(img$pages)
-    if (0 <= page < npages) {
+    if (0 <= page && page < npages) {
         img_page <- img$pages[page]
     } else {
         stop("Page index {page} is out of range.", call. = FALSE)
