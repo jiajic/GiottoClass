@@ -2777,7 +2777,7 @@ ometif_to_tif <- function(input_file,
             unlink(output_file, force = TRUE) # if overwrite, delete original
         } else {
             stop(output_file, 
-                 "already exists. Set overwrite = TRUE to replace.\n",
+                 " already exists. Set overwrite = TRUE to replace.\n",
                  call. = FALSE
             )
         }
