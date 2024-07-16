@@ -2733,7 +2733,7 @@ add_img_array_alpha <- function(x,
 #' @param output_dir character. Directory to write .tif to. Defaults to a new
 #' folder in the directory called "tif_exports"
 #' @param page numeric. Which page of the tif to open (if needed). If provided,
-#' a "_%04d" formatted suffix will be added to the output filename.
+#' a "_%04d" formatted suffix will be added to the output filename. 1-indexed
 #' @param overwrite logical. Default = FALSE. Whether to overwrite if the
 #' filename already exists.
 #' @returns returns the written filepath invisibly
@@ -2741,55 +2741,76 @@ add_img_array_alpha <- function(x,
 ometif_to_tif <- function(input_file,
     output_dir = file.path(dirname(input_file), "tif_exports"),
     page,
-    overwrite = FALSE) {
-    a <- list(input_file = input_file)
-
-    # get tifffile py
+    overwrite = FALSE
+) {
     package_check("tifffile", repository = "pip:tifffile")
-    ometif2tif_path <- system.file(
-        "python", "ometif_convert.py",
-        package = "GiottoClass"
-    )
-    reticulate::source_python(ometif2tif_path)
+    TIF <- reticulate::import("tifffile", convert = FALSE)
+    
+    # input file exists
+    checkmate::assert_file_exists(input_file)
     # ensure output directory exists
     if (!checkmate::test_directory_exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE)
     }
-
-    # tif page
+    
+    # tif page (input is 1-indexed)
     if (!missing(page)) {
-        a$page <- as.integer(page)
+        page <- as.integer(page)
         fname_page <- sprintf("_%04d", a$page)
     } else {
-        a$page <- 1L # default to page 1
+        page <- 1L # default to page 1
         fname_page <- ""
     }
-    a$page <- a$page - 1L # zero indexed
+    a$page <- a$page - 1L # to zero indexed
 
     # decide output filename
     fname <- sub(
-        pattern = ".ome.tif$", replacement = "",
-        x = basename(input_file)
+        pattern = ".ome.tif$", replacement = "", x = basename(input_file)
     )
-    fpath <- file.path(
+    output_file <- file.path(
         output_dir, paste0(fname, fname_page, ".tif")
     )
-    a$output_file <- fpath
 
     # handle overwrites
-    if (file.exists(fpath)) {
+    if (file.exists(output_file)) {
         if (isTRUE(overwrite)) {
-            unlink(fpath, force = TRUE) # if overwrite, delete original
+            unlink(output_file, force = TRUE) # if overwrite, delete original
         } else {
-            stop(fpath, "already exists. Set overwrite = TRUE to replace.\n",
-                call. = FALSE
+            stop(output_file, 
+                 "already exists. Set overwrite = TRUE to replace.\n",
+                 call. = FALSE
             )
         }
     }
-    do.call(ometif_2_tif, args = a)
+    
+    # load image into tifffile
+    img <- TIF$TiffFile(input_file)
+    on.exit(img$close())
+    
+    # page selection
+    npages <- length(img$pages)
+    if (0 <= page < npages) {
+        img_page <- img$pages[page]
+    } else {
+        stop("Page index {page} is out of range.", call. = FALSE)
+    }
+    
+    # convert to in-mem array
+    img_data <- img$asarray()
+
+    # write to disk
+    .tifffile_write(img_data, output_file = output_file)
+ 
     return(invisible(fpath))
 }
 
+.tifffile_write <- function(x, output_file) {
+    checkmate::assert_character(output_file)
+    TIF <- reticulate::import("tifffile", convert = FALSE)
+    tif_writer <- TIF$TiffWriter(output_file)
+    on.exit(tif_writer$close())
+    TIF$TiffWriter$write(x)
+}
 
 
 
