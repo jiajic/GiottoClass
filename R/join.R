@@ -707,16 +707,17 @@ joinGiottoObjects <- function(
 
 
     for (feat in first_features) {
-        # for(feat in comb_gobject@expression_feat) {
 
         savelist_vector <- list()
 
         for (gobj_i in seq_along(updated_object_list)) {
-            if (is.null(updated_object_list[[gobj_i]]@feat_info)) {
-                spat_point_vector <- NULL
+            updated_feat_info <- 
+                updated_object_list[[gobj_i]]@feat_info[[feat]]
+            
+            if (!is.null(updated_feat_info)) {
+                spat_point_vector <- updated_feat_info@spatVector
             } else {
-                spat_point_vector <-
-                    updated_object_list[[gobj_i]]@feat_info[[feat]]@spatVector
+                spat_point_vector <- NULL
             }
 
             savelist_vector[[gobj_i]] <- spat_point_vector
