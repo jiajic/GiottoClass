@@ -43,7 +43,6 @@ Imports:
     matrixStats (>= 0.55.0),
     methods,
     reticulate (>= 1.25),
-    sp,
     stats,
     terra (>= 1.7-39)
 Suggests: 
@@ -57,7 +56,6 @@ Suggests:
     HDF5Array (>= 1.18.1),
     knitr,
     plotly,
-    R.utils,
     raster,
     remotes,
     reshape2,
@@ -73,6 +71,7 @@ Suggests:
     SeuratObject,
     sf,
     SingleCellExperiment,
+    sp,
     SpatialExperiment,
     stars,
     STexampleData,
@@ -106,6 +105,7 @@ Collate:
     'interoperability.R'
     'join.R'
     'methods-IDs.R'
+    'methods-XY.R'
     'methods-affine.R'
     'methods-centroids.R'
     'methods-coerce.R'
@@ -123,6 +123,7 @@ Collate:
     'methods-plot.R'
     'methods-rbind.R'
     'methods-reconnect.R'
+    'methods-relate.R'
     'methods-rescale.R'
     'methods-setGiotto.R'
     'methods-shear.R'
@@ -139,6 +140,7 @@ Collate:
     'slot_check.R'
     'slot_list.R'
     'slot_show.R'
+    'spatial_binary_ops.R'
     'spatial_query.R'
     'spatial_structures.R'
     'split.R'
