@@ -619,25 +619,10 @@ joinGiottoObjects <- function(
 
 
     ## expression and feat IDs
-    ## if no expression matrices are provided, then just combine all feature IDs
     vmsg(.v = verbose, "2. expression data")
-
     avail_expr <- list_expression(gobject = first_obj)
 
-    if (is.null(avail_expr)) {
-        ## feat IDS
-        for (feat in first_features) {
-            combined_feat_ID <- unique(unlist(all_feat_ID_list[[feat]]))
-            ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-            comb_gobject <- set_feat_id(
-                gobject = comb_gobject,
-                feat_type = feat,
-                feat_IDs = combined_feat_ID,
-                set_defaults = FALSE
-            )
-            ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        }
-    } else {
+    if (!is.null(avail_expr)) {
         for (exprObj_i in seq(nrow(avail_expr))) {
             expr_list <- lapply(updated_object_list, function(gobj) {
                 getExpression(
@@ -663,13 +648,6 @@ joinGiottoObjects <- function(
             comb_gobject <- set_expression_values(
                 gobject = comb_gobject,
                 values = expr_list[[1]],
-                set_defaults = FALSE
-            )
-
-            comb_gobject <- set_feat_id(
-                gobject = comb_gobject,
-                feat_type = avail_expr$feat_type[[exprObj_i]],
-                feat_IDs = combmat[["sort_all_feats"]],
                 set_defaults = FALSE
             )
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
@@ -729,16 +707,17 @@ joinGiottoObjects <- function(
 
 
     for (feat in first_features) {
-        # for(feat in comb_gobject@expression_feat) {
 
         savelist_vector <- list()
 
         for (gobj_i in seq_along(updated_object_list)) {
-            if (is.null(updated_object_list[[gobj_i]]@feat_info)) {
-                spat_point_vector <- NULL
+            updated_feat_info <- 
+                updated_object_list[[gobj_i]]@feat_info[[feat]]
+            
+            if (!is.null(updated_feat_info)) {
+                spat_point_vector <- updated_feat_info@spatVector
             } else {
-                spat_point_vector <-
-                    updated_object_list[[gobj_i]]@feat_info[[feat]]@spatVector
+                spat_point_vector <- NULL
             }
 
             savelist_vector[[gobj_i]] <- spat_point_vector
