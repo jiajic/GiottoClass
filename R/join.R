@@ -194,16 +194,17 @@
 #' )
 #'
 #' @export
-joinGiottoObjects <- function(gobject_list,
-    gobject_names = NULL,
-    join_method = c("shift", "z_stack", "no_change"),
-    z_vals = 1000,
-    x_shift = NULL,
-    y_shift = NULL,
-    x_padding = NULL,
-    y_padding = NULL,
-    dry_run = FALSE,
-    verbose = FALSE) {
+joinGiottoObjects <- function(
+        gobject_list,
+        gobject_names = NULL,
+        join_method = c("shift", "z_stack", "no_change"),
+        z_vals = 1000,
+        x_shift = NULL,
+        y_shift = NULL,
+        x_padding = NULL,
+        y_padding = NULL,
+        dry_run = FALSE,
+        verbose = FALSE) {
     # NSE vars
     sdimz <- cell_ID <- sdimx <- sdimy <- name <- NULL
 
@@ -528,12 +529,19 @@ joinGiottoObjects <- function(gobject_list,
         # update IDs
         for (spat_unit in names(gobj@cell_metadata)) {
             for (feat_type in names(gobj@cell_metadata[[spat_unit]])) {
-                gobj@cell_metadata[[spat_unit]][[feat_type]]@metaDT[[
-                    "cell_ID"
-                ]] <- gobj@cell_ID[[spat_unit]]
-                gobj@cell_metadata[[spat_unit]][[feat_type]]@metaDT[[
-                    "list_ID"
-                ]] <- gname
+                cx <- getCellMetadata(gobj,
+                    spat_unit = spat_unit,
+                    feat_type = feat_type,
+                    output = "cellMetaObj",
+                    copy_obj = TRUE,
+                    set_defaults = FALSE
+                )
+
+                cx[][["list_ID"]] <- gname
+                cx[][["cell_ID"]] <- paste0(gname, "-", cx[][["cell_ID"]])
+                gobj <- setGiotto(gobj, cx,
+                    initialize = FALSE, verbose = FALSE
+                )
             }
         }
 
