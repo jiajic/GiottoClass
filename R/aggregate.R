@@ -392,7 +392,7 @@ setMethod(
         ...
     ) {
         aff <- y@affine
-        calculateOverlap(
+        res <- calculateOverlap(
             x = affine(x, aff, inv = TRUE),
             y = y@raster_object,
             name_overlap = objName(y),
@@ -400,6 +400,11 @@ setMethod(
             verbose = verbose,
             ...
         )
+        x@overlaps <- res@overlaps
+        if (is.null(centroids(x))) {
+            x <- centroids(x, append_gpolygon = TRUE)
+        }
+        res
     }
 )
 
@@ -417,7 +422,7 @@ setMethod(
         verbose = TRUE,
         ...) {
         if (is.null(name_overlap)) {
-            .gstop("calculateOverlap: name_overlap must be given")
+            stop("calculateOverlap: name_overlap must be given", call. = FALSE)
         }
 
         res <- calculateOverlap(
@@ -463,7 +468,13 @@ setMethod(
         checkmate::assert_true(terra::is.polygons(x))
         GiottoUtils::package_check("exactextractr")
 
+        # channel naming (catch if none or too few)
         image_names <- names(y)
+        nchannel <- terra::nlyr(y)
+        if (is.null(image_names) ||
+            nchannel > 1L && length(unique(image_names)) == 1L) {
+            names(y) <- sprintf("channel_%d", seq_len(nchannel))
+        }
 
         # NSE vars
         coverage_fraction <- NULL
