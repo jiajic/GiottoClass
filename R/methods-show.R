@@ -41,6 +41,16 @@ setMethod(
 
         cat("An object of class", class(object), "\n")
 
+        src <- .gsource(object)
+        if (is.character(src)) {
+            if (src != "") {
+                cat("source:", src, "\n")
+            }
+        } else {
+            cat("source:", .gsource(src), "\n")
+        }
+
+
         # active spat_unit and feat_type
         nspat <- NULL
         nfeat <- NULL
@@ -857,20 +867,32 @@ setMethod("show", signature("processParam"), function(object) {
 })
 
 # svkey ####
+
+.gspec_to_list <- function(x, plist = list()) {
+    plist$spat_unit <- x@spat_unit
+    plist$feat_type <- x@feat_type
+    plist$expression_values <- x@expression_values
+    plist$spat_loc_name <- x@spat_loc_name
+    plist$spat_enr_name <- x@spat_enr_name
+    plist$poly_info <- x@poly_info
+    plist$dim_reduction_to_use <- x@dim_reduction_to_use
+    plist$dim_reduction_name <- x@dim_reduction_name
+    plist
+}
+
+setMethod("show", signature("datakey"), function(object) {
+    cat(sprintf("<%s>\n", class(object)))
+    plist <- .gspec_to_list(object)
+    plist$verbose <- object@verbose
+    print_list(plist)
+})
+
 setMethod("show", signature("svkey"), function(object) {
     cat(sprintf("<%s>\n", class(object)))
     plist <- list(
         feats = sprintf("'%s'", paste(object@feats, collapse = "' '")))
-    plist$spat_unit <- object@spat_unit
-    plist$feat_type <- object@feat_type
-    plist$expression_values <- object@expression_values
-    plist$spat_loc_name <- object@spat_loc_name
-    plist$spat_enr_name <- object@spat_enr_name
-    plist$poly_info <- object@poly_info
-    plist$dim_reduction_to_use <- object@dim_reduction_to_use
-    plist$dim_reduction_name <- object@dim_reduction_name
+    plist <- .gspec_to_list(object, plist = plist)
     plist$verbose <- object@verbose
-
     print_list(plist)
 })
 

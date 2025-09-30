@@ -76,7 +76,9 @@ NULL
 #' provided
 #' @param expression_matrix_class class of expression matrix to
 #' use (e.g. 'dgCMatrix', 'DelayedArray')
-#' @param h5_file path to h5 file
+#' @param h5_file deprecated. Use `giotto_dir`
+#' @param giotto_dir path to giotto directory. `""` initializes the project in
+#' memory.
 #' @param verbose be verbose when building Giotto object
 #' @returns `giotto` object
 #' @section single step creation (conventional):
@@ -219,10 +221,15 @@ createGiottoObject <- function(expression,
     cores = determine_cores(),
     raw_exprs = NULL,
     expression_matrix_class = c("dgCMatrix", "DelayedArray"),
-    h5_file = NULL,
+    h5_file = deprecated(),
+    giotto_dir = "",
     verbose = FALSE) {
     debug_msg <- FALSE # for reading debug help
-    initialize_per_step <- FALSE
+    deprecate_param(h5_file, giotto_dir,
+        fun = "createGiottoObject", when = "0.5.1"
+    )
+    checkmate::assert_character(giotto_dir)
+    initialize_per_step <- FALSE # unexposed debug setting
 
     if (!is.null(largeImages)) {
         deprecate_warn(
@@ -236,13 +243,17 @@ createGiottoObject <- function(expression,
         images <- c(images, largeImages)
     }
 
+    if (!giotto_dir == "") {
+        giotto_dir <- new("gDirSource", path = giotto_dir)
+    }
+
     # create minimum giotto
     gobject <- giotto(
         expression_feat = expression_feat,
         offset_file = offset_file,
         instructions = instructions,
         versions = .versions_info(),
-        h5_file = h5_file
+        source = giotto_dir
     )
 
 
@@ -349,18 +360,9 @@ createGiottoObject <- function(expression,
             expression_matrix_class = expression_matrix_class
         )
         ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        ## evaluate if h5_file exists
-        if (!is.null(h5_file)) {
-            if (file.exists(h5_file)) {
-                wrap_msg("'", h5_file, "'",
-                    " file already exists and will be replaced",
-                    sep = ""
-                )
-                file.remove(h5_file)
-            } else {
-                wrap_msg("Initializing file ", "'", h5_file, "'", sep = "")
-            }
-        }
+        ## check if h5_file exists and needs reinitialization
+
+        .init_giotto_h5_file(gsrc = gobject@source)
 
         ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         gobject <- setExpression(
@@ -698,7 +700,29 @@ createGiottoObject <- function(expression,
     return(initialize(gobject))
 }
 
+.init_giotto_h5_file <- function(gsrc) {
+    cat("run")
+    # return early if in memory
+    if (is.character(gsrc)) {
+        if (gsrc == "") return(invisible())
+        # error if character but not `""`
+        stop("giotto `@source` expects `gDirSource` instead of `character`\n")
+    }
 
+    # may change for other backends
+    if (!inherits(gsrc, "gDirSource")) return(invisible())
+    path <- gsrc$h5
+
+    if (file.exists(path)) {
+        wrap_msg("'", path, "'",
+                 " file already exists and will be replaced",
+                 sep = ""
+        )
+        file.remove(path)
+    } else {
+        wrap_msg("Initializing file ", "'", path, "'", sep = "")
+    }
+}
 
 
 

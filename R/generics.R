@@ -155,6 +155,9 @@ setGeneric("objName<-", function(x, value) standardGeneric("objName<-"))
 ## setGiotto() generic ####
 setGeneric("setGiotto", function(gobject, x, ...) standardGeneric("setGiotto"))
 
+## getGiotto() generic ####
+setGeneric("getGiotto", function(gobject, x, ...) standardGeneric("getGiotto"))
+
 
 # coerce ####
 setGeneric("as.sf", function(x, ...) standardGeneric("as.sf"))

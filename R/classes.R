@@ -340,6 +340,27 @@ setClass("processParam", contains = "VIRTUAL", slots = list(param = "list"))
 
 # ** svkey ####
 
+setClass("gDataSpec",
+    contains = "VIRTUAL",
+    slots = list(
+        spat_unit = "nullOrChar",
+        feat_type = "nullOrChar",
+        expression_values = "nullOrChar",
+        spat_loc_name = "nullOrChar",
+        spat_enr_name = "nullOrChar",
+        poly_info = "nullOrChar",
+        dim_reduction_to_use = "nullOrChar",
+        dim_reduction_name = "nullOrChar"
+    )
+)
+
+setClass("datakey",
+    contains = "gDataSpec",
+    slots = list(
+         verbose = "nullOrLogical"
+    )
+)
+
 #' @name svkey-class
 #' @title Spatial Value Key
 #' @description
@@ -348,20 +369,14 @@ setClass("processParam", contains = "VIRTUAL", slots = list(param = "list"))
 #' Referenced data will be retrieved as a `data.table` via [spatValues()]
 #' @keywords internal
 setClass("svkey",
+    contains = "datakey",
     slots = list(
         feats = "character",
-        spat_unit = "nullOrChar",
-        feat_type = "nullOrChar",
-        expression_values = "nullOrChar",
-        spat_loc_name = "nullOrChar",
-        spat_enr_name = "nullOrChar",
-        poly_info = "nullOrChar",
-        dim_reduction_to_use = "nullOrChar",
-        dim_reduction_name = "nullOrChar",
-        verbose = "nullOrLogical",
         get = "function"
     )
 )
+
+
 
 # SUBCLASSES ####
 
@@ -400,7 +415,6 @@ setClass("spatFeatData",
     gobject@versions$gclass <- value
     return(gobject)
 }
-
 
 #' @title Update giotto object
 #' @name updateGiottoObject
@@ -472,6 +486,10 @@ updateGiottoObject <- function(gobject) {
 
     # [version-based updates] -------------------------------------------------#
 
+    if (.gversion(gobject) < "0.5.1") {
+        gobject <- .update_source_slot(gobject)
+    }
+
     # GiottoClass 0.3.0 removes @largeImages slot
     if (.gversion(gobject) < "0.3.0") {
         gobject <- .update_image_slot(gobject)
@@ -529,6 +547,13 @@ updateGiottoObject <- function(gobject) {
     .gversion(gobject) <- packageVersion("GiottoClass")
 
     return(gobject)
+}
+
+# for updating pre-0.5.1 objects
+.update_source_slot <- function(x) {
+    checkmate::assert_class(x, "giotto")
+    attr(x, "source") <- ""
+    x
 }
 
 # for updating pre-v0.3.0 objects
@@ -609,6 +634,8 @@ updateGiottoObject <- function(gobject) {
 #' @slot join_info information about joined Giotto objects
 #' @slot multiomics multiomics integration results
 #' @slot h5_file path to h5 file
+#' @slot source path to source directory backing the `giotto` object. If `""`,
+#' the object is in memory.
 #' @details
 #'
 #' \[**initialize**\]
@@ -660,7 +687,8 @@ giotto <- setClass(
         versions = "list",
         join_info = "ANY",
         multiomics = "ANY",
-        h5_file = "ANY"
+        h5_file = "ANY",
+        source = "ANY"
         # mirai = 'list'
     ),
     prototype = list(
@@ -685,7 +713,8 @@ giotto <- setClass(
         versions = .versions_info(),
         join_info = NULL,
         multiomics = NULL,
-        h5_file = NULL
+        h5_file = NULL,
+        source = ""
         # mirai = list()
     )
 

@@ -1566,26 +1566,6 @@ get_expression_values <- function(
     # Get info from slot nesting
     expr_vals <- gobject@expression[[spat_unit]][[feat_type]][[values]]
 
-    # Read matrix from h5 file if needed
-    if (!is.null(slot(gobject, "h5_file"))) {
-        matrix_path <- expr_vals[]
-
-        if (grepl("scaled", matrix_path)) {
-            expression_matrix <- HDF5Array::HDF5Array(
-                filepath = slot(gobject, "h5_file"),
-                name = matrix_path,
-                as.sparse = TRUE
-            )
-        } else {
-            expression_matrix <- chihaya::loadDelayed(
-                file = slot(gobject, "h5_file"),
-                path = matrix_path
-            )
-        }
-
-        slot(expr_vals, "exprMat") <- expression_matrix
-    }
-
     # Output
     if (output == "exprObj") {
         return(expr_vals)
@@ -1866,44 +1846,17 @@ set_expression_values <- function(gobject,
         )
     }
 
-    ## 7. Write matrix to h5_file if needed
-    if (!is.null(slot(gobject, "h5_file"))) {
-        expression_matrix <- slot(values, "exprMat")
+    ## 7. Write matrix to disk if needed
 
-        h5_file <- slot(gobject, "h5_file")
-        internal_path <- paste0(feat_type, "_", name)
-        # internal_path_dimnames = paste0(internal_path,"_dimnames")
-
-        if (file.exists(h5_file)) {
-            list_names <- HDF5Array::h5ls(file = h5_file)
-            while (internal_path %in% list_names[["name"]]) {
-                # rhdf5::h5delete(file = h5_file, name = internal_path)
-                internal_path <- paste0(internal_path, "_subset")
-                # internal_path_dimnames = paste0(internal_path,"_dimnames")
-            }
-        }
-
-        if (!inherits(expression_matrix, "DelayedArray")) {
-            chihaya::saveDelayed(
-                x = DelayedArray::DelayedArray(expression_matrix),
-                file = h5_file,
-                path = internal_path
-            )
-        } else if (inherits(expression_matrix, "ScaledMatrix")) {
-            expression_matrix <- HDF5Array::writeHDF5Array(expression_matrix,
-                filepath = h5_file,
-                name = internal_path,
-                with.dimnames = TRUE
-            )
-        } else {
-            chihaya::saveDelayed(
-                x = expression_matrix,
-                file = h5_file,
-                path = internal_path
-            )
-        }
-
-        slot(values, "exprMat") <- internal_path
+    # see sources.R
+    if (!identical(slot(gobject, "source"), "")) {
+        save_info <- .delayedmatrix_save(gobject, x = values[])
+        backend <- getOption("giotto.disk_matrix_format", "h5")
+        gobject <- .giotto_json_add_artifact(gobject,
+            store = backend, uid = save_info$uid
+        )
+        slot(values, "exprMat") <- save_info$x
+        slot(values, "misc")[["uid"]] <- save_info$uid
     }
 
     # Output
@@ -1914,10 +1867,6 @@ set_expression_values <- function(gobject,
         return(gobject)
     }
 }
-
-
-
-
 
 
 ## multiomics slot ####
@@ -6358,6 +6307,14 @@ spatValues <- function(gobject,
 
     return(vals)
 }
+
+setMethod("getGiotto", signature("giotto", "svkey"), function(gobject, x, ...) {
+    x@get(gobject)
+})
+
+setMethod("getGiotto", signature("giotto", "datakey"), function(gobject, x, ...) {
+
+})
 
 
 ## svkey ####
