@@ -600,8 +600,8 @@ createGiottoObject <- function(expression,
         if (isTRUE(verbose)) wrap_msg("--- finished spatial enrichment ---\n\n")
         ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
     } else {
-        if (isTRUE(verbose)) message("No spatial enrichment results are
-                                    provided")
+        if (isTRUE(verbose)) message(
+        "No spatial enrichment results are provided")
     }
 
 
