@@ -25,6 +25,7 @@ setClass("gDirSource",
 
 setGeneric(".gsource", function(x, ...) standardGeneric(".gsource"))
 setGeneric(".gsource<-", function(x, ..., value) standardGeneric(".gsource<-"))
+setGeneric(".gschema_name", function(x, ...) standardGeneric(".gschema_name"))
 
 setMethod(".gsource", "giottoSource", function(x, ...) x@path)
 setMethod(".gsource", "giotto", function(x, ...) x@source)
@@ -44,7 +45,7 @@ gdirsource_defaults <- function(clist) {
 
 setMethod("initialize", signature("gDirSource"), function(.Object, ...) {
     .Object <- callNextMethod(.Object, ...)
-    p <- .Object@path
+    p <- .Object@path <- normalizePath(.Object@path, mustWork = FALSE)
     json_path <- file.path(p, "giottodir.json")
     if (is.na(p)) {
         stop("[gDirSource] 'path' should be a directory path for the giotto project.\n")
@@ -301,3 +302,19 @@ setMethod("[", c(x = "gDirSource", i = "character", j = "missing", drop = "missi
     )
 }
 
+# schema name building ####
+
+.perc_sep <- function(..., prefix) {
+    out <- paste(..., sep = "%")
+    if (!missing(prefix)) out <- paste0(prefix, ".", out)
+    out
+}
+
+setMethod(".gschema_name", signature("exprObj"), function(x) {
+    .perc_sep(
+        prefix = class(x),
+        x@spat_unit,
+        x@feat_type,
+        x@name
+    )
+})
