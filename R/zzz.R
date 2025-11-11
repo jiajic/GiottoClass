@@ -15,4 +15,5 @@
     init_option("giotto.update_param", TRUE)
     init_option("giotto.no_python_warn", FALSE)
     init_option("giotto.disk_matrix_format", "h5")
+    init_option("giotto.init_check_severity", "stop")
 }
