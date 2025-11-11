@@ -14,7 +14,7 @@ setClass(
 setClass("gDirSource",
     contains = "giottoSource",
     slots = list(
-        content = "list",
+        catalog = "list",
         read = "function",
         write = "function"
     )
@@ -34,9 +34,10 @@ setMethod(".gsource<-", c("giotto", "ANY"), function(x, ..., value) {
     x
 })
 
-# update the content list from a gDirSource object with the default subdirectory
-# names for specific formats.
-gdirsource_defaults <- function(clist) {
+# update the catalog list of a gDirSource object with the default subdirectory
+# names for specific formats if no alternatives have already been provided.
+gdirsource_defaults <- function(clist = list()) {
+    checkmate::assert_list(clist)
     clist$stores$h5 <- clist$stores$h5 %null% "h5"
     clist$stores$spatvector <- clist$stores$spatvector %null% "spatvector"
     clist$stores$parquet <- clist$stores$parquet %null% "parquet"
@@ -51,17 +52,15 @@ setMethod("initialize", signature("gDirSource"), function(.Object, ...) {
         stop("[gDirSource] 'path' should be a directory path for the giotto project.\n")
     }
 
-    # default content subdirectories
-    content <- .Object@content
-    content <- gdirsource_defaults(content)
-    .Object@content <- content
+    # default catalog subdirectories
+    .Object@catalog <- gdirsource_defaults(.Object@catalog)
 
     write_fun <- function() { # write a giotto dir json
         if (!dir.exists(p)) {
             message("Setting up Giotto project directory at:", p)
             dir.create(path = p)
         }
-        jsonlite::write_json(.Object@content,
+        jsonlite::write_json(.Object@catalog,
             path = json_path
         )
         invisible(TRUE)
@@ -75,7 +74,7 @@ setMethod("initialize", signature("gDirSource"), function(.Object, ...) {
         if (!file.exists(json_path)) {
             stop("giottodir.json not found in: ", p)
         }
-        .Object@content <- jsonlite::fromJSON(json_path)
+        .Object@catalog <- jsonlite::fromJSON(json_path)
         .Object
     }
     .Object@read <- read_fun
@@ -93,10 +92,10 @@ setMethod("show", "gDirSource", function(object) {
     if (file.exists(object@path)) {
         object <- object@read()
         cat("stores:\n")
-        print_list(object@content$stores)
+        print_list(object@catalog$stores)
         cat("\n")
-        cat("artifacts:", length(object@content$artifacts), "\n")
-        cat("versions:", length(object@content$versions), "\n")
+        cat("artifacts:", length(object@catalog$artifacts), "\n")
+        cat("versions:", length(object@catalog$versions), "\n")
     } else {
         cat("giottodir.json not written yet. Use `@write()`\n")
     }
@@ -107,15 +106,15 @@ setMethod("show", "gDirSource", function(object) {
 })
 
 setMethod("$", "gDirSource", function(x, name) {
-    file.path(x@path, x@content$stores[[name]])
+    file.path(x@path, x@catalog$stores[[name]])
 })
 
 #' @keywords internal
 #' @export
-.DollarNames.gDirSource <- function(x, pattern) names(x@content$stores)
+.DollarNames.gDirSource <- function(x, pattern) names(x@catalog$stores)
 
 setMethod("[", c(x = "gDirSource", i = "character", j = "missing", drop = "missing"), function(x, i, j, ..., drop) {
-    file.path(x@path, x@content$stores[[i]])
+    file.path(x@path, x@catalog$stores[[i]])
 })
 
 # JSON records ####
@@ -133,7 +132,7 @@ setMethod("[", c(x = "gDirSource", i = "character", j = "missing", drop = "missi
 .giotto_json_edit_content <- function(gobject, fun) {
     gsrc <- gobject@source
     gsrc <- gsrc@read()
-    gsrc@content <- fun(gsrc@content)
+    gsrc@catalog <- fun(gsrc@catalog)
     gsrc <- initialize(gsrc)
     gsrc@write()
     gobject@source <- gsrc
@@ -223,9 +222,9 @@ setMethod("[", c(x = "gDirSource", i = "character", j = "missing", drop = "missi
 .giotto_json_artifacts <- function(x) {
     version <- store <- NULL # NSE var
     src <- .eval_to_gdirsource(x)
-    artifacts <- src@content$artifacts
+    artifacts <- src@catalog$artifacts
     artifacts <- data.table::rbindlist(artifacts, idcol = "id")
-    stores <- src@content$stores
+    stores <- src@catalog$stores
     stores <- data.frame(
         store = names(stores),
         path = unlist(stores),
@@ -253,7 +252,7 @@ setMethod("[", c(x = "gDirSource", i = "character", j = "missing", drop = "missi
     # update json
     keep_ids <- artifacts[!is.na(version), id]
     src <- .eval_to_gdirsource(x)
-    src@content$artifacts <- src@content$artifacts[keep_ids]
+    src@catalog$artifacts <- src@catalog$artifacts[keep_ids]
     src@write()
 
     TRUE
