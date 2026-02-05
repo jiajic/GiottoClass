@@ -84,6 +84,9 @@ protein, metabolites, ... that are provided in the expression slot.}
 
 \item{\code{h5_file}}{path to h5 file}
 
+\item{\code{source}}{path to source directory backing the \code{giotto} object. If \code{""},
+the object is in memory.}
+
 \item{\code{misc}}{miscellaneous or unstructured data}
 }}
 

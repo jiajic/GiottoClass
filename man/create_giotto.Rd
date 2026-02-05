@@ -29,7 +29,8 @@ createGiottoObject(
   cores = determine_cores(),
   raw_exprs = NULL,
   expression_matrix_class = c("dgCMatrix", "DelayedArray"),
-  h5_file = NULL,
+  h5_file = deprecated(),
+  giotto_dir = "",
   verbose = FALSE
 )
 
@@ -111,7 +112,10 @@ provided}
 \item{expression_matrix_class}{class of expression matrix to
 use (e.g. 'dgCMatrix', 'DelayedArray')}
 
-\item{h5_file}{path to h5 file}
+\item{h5_file}{deprecated. Use \code{giotto_dir}}
+
+\item{giotto_dir}{path to giotto directory. \code{""} initializes the project in
+memory.}
 
 \item{verbose}{be verbose when building Giotto object}
 
