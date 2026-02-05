@@ -880,13 +880,6 @@ setMethod("show", signature("processParam"), function(object) {
     plist
 }
 
-setMethod("show", signature("datakey"), function(object) {
-    cat(sprintf("<%s>\n", class(object)))
-    plist <- .gspec_to_list(object)
-    plist$verbose <- object@verbose
-    print_list(plist)
-})
-
 setMethod("show", signature("svkey"), function(object) {
     cat(sprintf("<%s>\n", class(object)))
     plist <- list(

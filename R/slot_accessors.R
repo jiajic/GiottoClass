@@ -6321,9 +6321,6 @@ setMethod("getGiotto", signature("giotto", "svkey"), function(gobject, x, ...) {
     x@get(gobject)
 })
 
-setMethod("getGiotto", signature("giotto", "datakey"), function(gobject, x, ...) {
-
-})
 
 
 ## svkey ####
