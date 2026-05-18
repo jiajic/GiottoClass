@@ -1024,13 +1024,12 @@ addSpatialCentroidLocationsLayer <- function(gobject,
             )
         }
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <- set_spatial_locations(
+        gobject <- setSpatialLocations(
             gobject = gobject,
-            spatlocs = spatial_locs,
-            verbose = FALSE
+            x = spatial_locs,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
 
         # cell ID

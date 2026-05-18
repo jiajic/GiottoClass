@@ -1880,148 +1880,52 @@ setSpatialLocations <- function(gobject,
         avail_ex <- list_expression(gobject)
         avail_si <- list_spatial_info(gobject)
         if (is.null(avail_ex) && is.null(avail_si)) {
-            stop(wrap_txt("Add expression or spatial (polygon) information first"))
+            stop(wrap_txt(
+                "Add expression or spatial (polygon) information first"
+            ))
         }
     }
 
-    # 1. Determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_name <- ifelse(is.null(match.call()$name), yes = TRUE, no = FALSE)
-    .external_accessor_spatloc <- list(
-        nospec_unit = nospec_unit,
-        nospec_name = nospec_name
-    )
-    # checked by internal setter to determine if called by external
+    # Validate input type
+    if (!inherits(x, c("spatLocsObj", "NULL", "list"))) {
+        stop(wrap_txt("Only spatLocsObj or lists of spatLocsObj accepted.
+            For raw or external data, please first use readSpatLocsData()"))
+    }
 
+    # `nospec_*` are read from this frame by read_s4_nesting() to decide
+    # whether to overwrite the subobject's nesting values with caller-supplied
+    # ones, or vice versa.
+    nospec_unit <- is.null(spat_unit)
+    nospec_name <- is.null(match.call()$name)
 
-    # NATIVE INPUT TYPES
-    # 3. If input is spatLocsObj or NULL, pass to internal
-    if (is.null(x) | inherits(x, "spatLocsObj")) {
-        # pass to internal
-        gobject <- set_spatial_locations(
-            gobject = gobject,
-            spatlocs = x,
-            spat_unit = spat_unit,
-            spat_loc_name = name,
-            provenance = provenance,
+    # List input: validate items and iterate. Only forward nesting args that
+    # the caller actually supplied; otherwise the recursive call's match.call()
+    # would see name = "raw" (default) and clobber each subobj's own @name.
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "spatLocsObj", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("Only spatLocsObj or lists of spatLocsObj accepted.
+                For raw or external data, please first use readSpatLocsData()"))
+        }
+        base_args <- list(
             verbose = verbose,
-            set_defaults = FALSE,
             initialize = initialize
         )
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "spatLocsObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 4. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_spatial_locations(
-                    gobject = gobject,
-                    spatlocs = x[[obj_i]],
-                    spat_unit = spat_unit,
-                    spat_loc_name = name,
-                    provenance = provenance,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
+        if (!nospec_unit) base_args$spat_unit <- spat_unit
+        if (!nospec_name) base_args$name <- name
+        if (!is.null(provenance)) base_args$provenance <- provenance
+        for (obj_i in seq_along(x)) {
+            gobject <- do.call(setSpatialLocations, c(
+                list(gobject = gobject, x = x[[obj_i]]),
+                base_args
+            ))
         }
+        return(gobject)
     }
 
-    # catch
-    stop(wrap_txt("Only spatLocsObj or lists of spatLocsObj accepted.
-                For raw or external data, please first use readSpatLocsData()"))
-}
-
-
-
-
-
-
-
-
-
-#' @title Set spatial locations
-#' @name set_spatial_locations
-#' @description Function to set a spatial location slot
-#' @inheritParams data_access_params
-#' @param spatlocs spatial locations (accepts either \code{data.table} or
-#' \code{spatLocsObj})
-#' @param spat_loc_name name of spatial locations, default "raw"
-#' @param provenance provenance information (optional)
-#' @param verbose be verbose
-#' @details If a \code{spatLocsObj} is provided to \code{spatlocs} param then
-#' any attached name and spat_unit info will be used for input to this
-#' function's \code{spat_loc_name} and \code{spat_unit}params, BUT will be
-#' overridden by any alternative specific inputs to those params. \cr
-#' ie: a \code{spatLocsObj} with spat_unit slot == 'cell' will be automatically
-#' nested by spat_unit 'cell' when using \code{set_spatial_locations} as long as
-#' param \code{spat_unit = NULL}. BUT if param \code{spat_unit = 'nucleus'} then
-#' the \code{spatLocsObj} will be nested by spat_unit 'nucleus' instead and
-#' its spat_unit slot will be changed to 'nucleus'
-#' @returns giotto object
-#' @noRd
-set_spatial_locations <- function(gobject,
-    spatlocs,
-    spat_unit = NULL,
-    spat_loc_name = "raw",
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    assert_giotto(gobject)
-    if (!methods::hasArg(spatlocs)) {
-        stop(wrap_txt("spatlocs param must be given"))
-    }
-
-    # 0. pass to external if not native formats
-    if (!inherits(spatlocs, c("spatLocsObj", "NULL"))) {
-        stop(wrap_txt(deparse(substitute(spatlocs)), "is not spatLocsObj (set)
-                or NULL (remove)"))
-        gobject <- setSpatialLocations(
-            gobject = gobject,
-            x = spatlocs,
-            spat_unit = spat_unit,
-            name = spat_loc_name,
-            provenance = provenance,
-            verbose = verbose
-        )
-        return(gobject) # initialize done already
-    }
-
-    # 1. determine if input was supplied to spat_unit and spat_loc_name
-    p <- parent.frame() # Get values if called from external
-    call_from_external <- exists(".external_accessor_spatloc", where = p)
-
-    if (isTRUE(call_from_external)) {
-        nospec_unit <- p$.external_accessor_spatloc$nospec_unit
-        nospec_name <- p$.external_accessor_spatloc$nospec_name
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_name <- methods::hasArg(spat_loc_name)
-    }
-
-    # use name from now on for compatiblity with S4 reading
-    name <- spat_loc_name
-
-    # 2. set spat_unit
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-    }
-
-    # 3. remove if input is NULL
-    if (is.null(spatlocs)) {
+    # NULL: remove specified entry
+    if (is.null(x)) {
         if (isTRUE(verbose)) {
-            wrap_msg("NULL passed to spatlocs. Removing specified spatial
+            wrap_msg("NULL passed to x. Removing specified spatial
                     locations.")
         }
         gobject@spatial_locs[[spat_unit]][[name]] <- NULL
@@ -2034,18 +1938,15 @@ set_spatial_locations <- function(gobject,
             }
         }
 
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
     }
 
-    # 4. import data from S4 if available
-    # NOTE: modifies spat_unit/name/provenance
-    spatlocs <- read_s4_nesting(spatlocs)
+    # NOTE: read_s4_nesting modifies spat_unit / name / provenance in this
+    # frame based on the nospec_* flags.
+    x <- read_s4_nesting(x)
 
-    # 5. check if specified name has already been used
+    # Notify on replacement
     potential_names <- list_spatial_locations_names(gobject,
         spat_unit = spat_unit
     )
@@ -2059,22 +1960,27 @@ set_spatial_locations <- function(gobject,
         }
     }
 
-    # 6. update and return giotto object
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
-            "Setting spatial locations [", spatUnit(spatlocs), "] ",
-            objName(spatlocs),
+            "Setting spatial locations [", spatUnit(x), "] ",
+            objName(x),
             sep = ""
         )
     }
 
-    gobject@spatial_locs[[spat_unit]][[name]] <- spatlocs
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+    gobject@spatial_locs[[spat_unit]][[name]] <- x
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4014,23 +3920,16 @@ setPolygonInfo <- function(gobject,
                     misc = NULL
                 )
 
-                ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-                .external_accessor_spatloc <- list(
-                    # set spatlocs 'spat_unit' using 'name' if it was EXPLICITLY
-                    # supplied to setPolygonInfo
-                    # otherwise, set spatlocs 'spat_unit' as x@name
-                    nospec_unit = nospec_name,
-                    # set spatlocs name based on locsObj@name
-                    nospec_name = TRUE
+                # Forward spat_unit to setSpatialLocations only when the user
+                # explicitly supplied `name` to setPolygonInfo; otherwise let
+                # locsObj's own @spat_unit win. Never forward `name` so that
+                # locsObj's @name ("raw") is used.
+                sl_args <- list(
+                    gobject = gobject, x = locsObj,
+                    verbose = verbose, initialize = initialize
                 )
-                gobject <- set_spatial_locations(gobject,
-                    spatlocs = locsObj,
-                    spat_unit = name, # useif explicit here
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-                ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+                if (!nospec_name) sl_args$spat_unit <- name
+                gobject <- do.call(setSpatialLocations, sl_args)
             }
         }
         return(gobject)
@@ -4072,24 +3971,12 @@ setPolygonInfo <- function(gobject,
                             misc = initialize
                         )
 
-                        ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-                        .external_accessor_spatloc <- list(
-                            # set spatlocs 'spat_unit' using 'name' if it
-                            # was EXPLICITLY
-                            # supplied to setPolygonInfo
-                            # otherwise, set spatlocs 'spat_unit' as x@name
-                            nospec_unit = nospec_name,
-                            # set spatlocs name based on locsObj@name
-                            nospec_name = TRUE
+                        sl_args <- list(
+                            gobject = gobject, x = locsObj,
+                            verbose = verbose, initialize = initialize
                         )
-                        gobject <- set_spatial_locations(gobject,
-                            spatlocs = locsObj,
-                            spat_unit = name, # useif explicit here
-                            verbose = verbose,
-                            set_defaults = FALSE,
-                            initialize = initialize
-                        )
-                        ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+                        if (!nospec_name) sl_args$spat_unit <- name
+                        gobject <- do.call(setSpatialLocations, sl_args)
                     }
                 }
             }

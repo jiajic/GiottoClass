@@ -160,12 +160,11 @@
         filter_bool_cells <- spatIDs(spatObj) %in% cell_ids
         spatObj[] <- spatObj[][filter_bool_cells]
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <<- set_spatial_locations(gobject,
-            spatlocs = spatObj,
-            verbose = FALSE
+        gobject <<- setSpatialLocations(gobject,
+            x = spatObj,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         # not yet possible to row subset data.tables by reference.
         # Must be set back in.
 

@@ -1639,11 +1639,11 @@ createMetafeats <- function(gobject,
             )
             if (!is.null(sl[])) {
                 sl[] <- data.table::setalloccol(sl[])
-                gobject <- set_spatial_locations(
+                gobject <- setSpatialLocations(
                     gobject = gobject,
-                    spatlocs = sl,
-                    set_defaults = FALSE,
-                    verbose = FALSE
+                    x = sl,
+                    verbose = FALSE,
+                    initialize = FALSE
                 )
             }
         }

@@ -3235,9 +3235,11 @@ spatialExperimentToGiotto <- function(
             name = "spatLocs",
             coordinates = spatialLocsDT
         )
-        giottoObj <- set_spatial_locations(
+        giottoObj <- setSpatialLocations(
             gobject = giottoObj,
-            spatlocs = spatLocsObj
+            x = spatLocsObj,
+            verbose = FALSE,
+            initialize = FALSE
         )
     }
 

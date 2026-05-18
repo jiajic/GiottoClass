@@ -2516,13 +2516,12 @@ aggregateStacksLocations <- function(gobject,
         misc = NULL
     )
 
-    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-    gobject <- set_spatial_locations(
+    gobject <- setSpatialLocations(
         gobject = gobject,
-        spatlocs = new_spatlocs_obj,
-        set_defaults = FALSE
+        x = new_spatlocs_obj,
+        verbose = FALSE,
+        initialize = FALSE
     )
-    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
     return(gobject)
 }

@@ -452,11 +452,11 @@ createGiottoObject <- function(expression,
                 provenance = spat_unit
             )
 
-            ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-            gobject <- set_spatial_locations(gobject,
-                spatlocs = dummySpatLocObj
+            gobject <- setSpatialLocations(gobject,
+                x = dummySpatLocObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
-            ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         }
     }
 
