@@ -355,6 +355,106 @@ setMethod("show", "giottoMulti", function(object) {
 }
 
 
+# MULTI-SPECIFIC ACCESSORS ####
+
+#' @title Active objects of a giottoMulti
+#' @name activeObjects
+#' @description
+#' Get or set which child objects of a `giottoMulti` are currently active.
+#' Per-object operations route to active children by default. `NULL` value
+#' resets to all children.
+#' @param x a `giottoMulti`
+#' @param value `character` vector of object names, or `NULL` to reset to all
+#' @returns `character` vector of active object names
+#' @export
+setGeneric("activeObjects", function(x, ...) standardGeneric("activeObjects"))
+
+#' @rdname activeObjects
+#' @export
+setGeneric("activeObjects<-",
+    function(x, ..., value) standardGeneric("activeObjects<-"))
+
+#' @rdname activeObjects
+#' @export
+setMethod("activeObjects", "giottoMulti", function(x, ...) {
+    if (length(x@active) == 1L && is.na(x@active)) return(names(x))
+    x@active
+})
+
+#' @rdname activeObjects
+#' @export
+setReplaceMethod("activeObjects", "giottoMulti", function(x, ..., value) {
+    if (is.null(value)) {
+        x@active <- NA_character_
+        return(x)
+    }
+    checkmate::assert_character(value, any.missing = FALSE)
+    bad <- setdiff(value, names(x))
+    if (length(bad) > 0L) {
+        stop("unknown object(s): ", paste(bad, collapse = ", "),
+            call. = FALSE)
+    }
+    x@active <- value
+    x
+})
+
+
+#' @title id_map accessor for giottoMulti
+#' @name idMap
+#' @description
+#' Return the `(object, local_id, global_id)` mapping for cells or features.
+#' @param x a `giottoMulti`
+#' @param which one of `"cells"` or `"feats"`
+#' @returns a `data.table` or `NULL`
+#' @export
+setGeneric("idMap", function(x, ...) standardGeneric("idMap"))
+
+#' @rdname idMap
+#' @export
+setMethod("idMap", "giottoMulti", function(x, which = c("cells", "feats"), ...) {
+    which <- match.arg(which, c("cells", "feats"))
+    x@id_map[[which]]
+})
+
+
+# spatIDs / featIDs — return GLOBAL ids from id_map ####
+
+#' @rdname spatIDs-generic
+#' @export
+setMethod(
+    "spatIDs", signature(x = "giottoMulti"),
+    function(x, object = NULL, local = FALSE, ...) {
+        m <- x@id_map$cells
+        if (is.null(m) || nrow(m) == 0L) return(character())
+        if (!is.null(object)) {
+            target <- .gm_resolve_active(x, object)
+            # pre-compute keep to avoid data.table column-name shadowing
+            keep <- m$object %in% target
+            m <- m[keep, ]
+        }
+        if (isTRUE(local)) return(m$local_id)
+        m$global_id
+    }
+)
+
+#' @rdname spatIDs-generic
+#' @export
+setMethod(
+    "featIDs", signature(x = "giottoMulti"),
+    function(x, object = NULL, local = FALSE, uniques = TRUE, ...) {
+        m <- x@id_map$feats
+        if (is.null(m) || nrow(m) == 0L) return(character())
+        if (!is.null(object)) {
+            target <- .gm_resolve_active(x, object)
+            keep <- m$object %in% target
+            m <- m[keep, ]
+        }
+        ids <- if (isTRUE(local)) m$local_id else m$global_id
+        if (isTRUE(uniques)) unique(ids) else ids
+    }
+)
+
+
 # DISPATCH PATTERN — EXAMPLES (not yet exhaustive) ####
 #
 # Two representative methods. The point is the shape, not coverage —
