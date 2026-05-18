@@ -669,15 +669,12 @@
                             Guessing based on existing expression cell_IDs"
                         ))
                         rownames(dr_obj[]) <- IDs
-                        ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-                        gobject <- set_dimReduction(
+                        gobject <- setDimReduction(
                             gobject = gobject,
-                            dimObject = dr_obj,
-                            set_defaults = FALSE,
+                            x = dr_obj,
                             initialize = TRUE,
                             verbose = FALSE
                         )
-                        ### ### ### ### ### ### ### ### ### ### ### ### ### ###
                     } else {
                         # if number of values do NOT match, throw error
                         stop(wrap_txt(

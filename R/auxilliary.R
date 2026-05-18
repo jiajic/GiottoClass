@@ -1448,12 +1448,16 @@ createMetafeats <- function(gobject,
             wrap_msg(name, " has already been used, will be overwritten")
         }
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <- set_spatial_enrichment(
+        # Bypass setSpatialEnrichment's spatial_locs validity check —
+        # createMetafeats only requires expression info, not spatial_locs.
+        old <- options(giotto.check_valid = FALSE)
+        on.exit(options(old), add = TRUE)
+        gobject <- setSpatialEnrichment(
             gobject = gobject,
-            spatenrichment = enrObj
+            x = enrObj,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
         ## update parameters used ##
         gobject <- update_giotto_params(gobject,
@@ -1663,11 +1667,11 @@ createMetafeats <- function(gobject,
             )
             if (!is.null(se[])) {
                 se[] <- data.table::setalloccol(se[])
-                gobject <- set_spatial_enrichment(
+                gobject <- setSpatialEnrichment(
                     gobject = gobject,
-                    spatenrichment = se,
-                    set_defaults = FALSE,
-                    verbose = FALSE
+                    x = se,
+                    verbose = FALSE,
+                    initialize = FALSE
                 )
             }
         }
@@ -1690,11 +1694,11 @@ createMetafeats <- function(gobject,
             }
             if (!is.null(sn[])) {
                 sn[] <- data.table::setalloccol(sn[])
-                gobject <- set_spatialNetwork(
+                gobject <- setSpatialNetwork(
                     gobject = gobject,
-                    spatial_network = sn,
+                    x = sn,
                     verbose = FALSE,
-                    set_defaults = FALSE
+                    initialize = FALSE
                 )
             }
         }

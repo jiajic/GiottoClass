@@ -1240,10 +1240,12 @@ calculateOverlapPolygonImages <- function(gobject,
 
     if (return_gobject) {
         poly_info@overlaps[["intensity"]][[name_overlap]] <- dt_exact
-        gobject <- set_polygon_info(
+        gobject <- setPolygonInfo(
             gobject = gobject,
-            polygon_name = spatial_info,
-            gpolygon = poly_info
+            x = poly_info,
+            name = spatial_info,
+            verbose = FALSE,
+            initialize = FALSE
         )
         return(gobject)
     } else {
@@ -2667,11 +2669,12 @@ aggregateStacksPolygons <- function(gobject,
         overlaps = NULL
     )
 
-    gobject <- set_polygon_info(
+    gobject <- setPolygonInfo(
         gobject = gobject,
-        polygon_name = new_spat_unit,
-        gpolygon = gpolygon,
-        verbose = FALSE
+        x = gpolygon,
+        name = new_spat_unit,
+        verbose = FALSE,
+        initialize = FALSE
     )
 
     return(gobject)

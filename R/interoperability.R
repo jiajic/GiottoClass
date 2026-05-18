@@ -367,7 +367,8 @@ anndataToGiotto <- function(anndata_path = NULL,
             )
 
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-            gobject <- set_dimReduction(gobject = gobject, dimObject = dobj)
+            gobject <- setDimReduction(gobject = gobject, x = dobj,
+                verbose = FALSE, initialize = FALSE)
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         }
     }
@@ -392,7 +393,8 @@ anndataToGiotto <- function(anndata_path = NULL,
             )
 
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-            gobject <- set_dimReduction(gobject = gobject, dimObject = dobj)
+            gobject <- setDimReduction(gobject = gobject, x = dobj,
+                verbose = FALSE, initialize = FALSE)
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         }
     }
@@ -416,7 +418,8 @@ anndataToGiotto <- function(anndata_path = NULL,
                 my_rownames = colnames(X)
             )
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-            gobject <- set_dimReduction(gobject = gobject, dimObject = dobj)
+            gobject <- setDimReduction(gobject = gobject, x = dobj,
+                verbose = FALSE, initialize = FALSE)
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         }
     }
@@ -491,14 +494,15 @@ anndataToGiotto <- function(anndata_path = NULL,
                 feat_type = feat_type
             )
 
-            gobject <- set_NearestNetwork(
+            gobject <- setNearestNetwork(
                 gobject = gobject,
-                nn_network = netObj,
+                x = netObj,
                 spat_unit = spat_unit,
                 feat_type = feat_type,
-                nn_network_to_use = net_type,
-                network_name = net_name,
-                set_defaults = FALSE
+                nn_type = net_type,
+                name = net_name,
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
     }
@@ -593,9 +597,11 @@ anndataToGiotto <- function(anndata_path = NULL,
                 )
             }
 
-            gobject <- set_spatialNetwork(
+            gobject <- setSpatialNetwork(
                 gobject = gobject,
-                spatial_network = spatObj
+                x = spatObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
     }
@@ -2234,10 +2240,12 @@ seuratToGiottoV4 <- function(
             spatNetObj <- create_spat_net_obj(
                 networkDT = DT
             )
-            gobject <- set_spatialNetwork(
+            gobject <- setSpatialNetwork(
                 gobject = gobject,
-                spatial_network = spatNetObj,
-                name = sp_network[i]
+                x = spatNetObj,
+                name = sp_network[i],
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
     }
@@ -2620,10 +2628,12 @@ seuratToGiottoV5 <- function(
             spatNetObj <- create_spat_net_obj(
                 networkDT = DT
             )
-            gobject <- set_spatialNetwork(
+            gobject <- setSpatialNetwork(
                 gobject = gobject,
-                spatial_network = spatNetObj,
-                name = sp_network[i]
+                x = spatNetObj,
+                name = sp_network[i],
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
     }
@@ -3214,9 +3224,11 @@ spatialExperimentToGiotto <- function(
                 reduction_method = redDimsNames[i]
             )
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-            giottoObj <- set_dimReduction(
+            giottoObj <- setDimReduction(
                 gobject = giottoObj,
-                dimObject = dimRedObj
+                x = dimRedObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
             ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         }
@@ -3279,10 +3291,12 @@ spatialExperimentToGiotto <- function(
                 spatNetObj <- create_spat_net_obj(
                     networkDT = networkDT
                 )
-                giottoObj <- set_spatialNetwork(
+                giottoObj <- setSpatialNetwork(
                     gobject = giottoObj,
-                    spatial_network = spatNetObj,
-                    name = sp_network[i]
+                    x = spatNetObj,
+                    name = sp_network[i],
+                    verbose = FALSE,
+                    initialize = FALSE
                 )
                 networks[[sp_network[i]]] <- NULL
             }
@@ -3298,9 +3312,11 @@ spatialExperimentToGiotto <- function(
                     name = nn_network[i],
                     igraph = networks[[nn_network[i]]]
                 )
-                giottoObj <- set_NearestNetwork(
+                giottoObj <- setNearestNetwork(
                     gobject = giottoObj,
-                    nn_network = nnNetObj
+                    x = nnNetObj,
+                    verbose = FALSE,
+                    initialize = FALSE
                 )
                 networks[[nn_network[i]]] <- NULL
             }
@@ -3315,9 +3331,11 @@ spatialExperimentToGiotto <- function(
                 name = names(networks)[i],
                 igraph = networks[[i]]
             )
-            giottoObj <- set_NearestNetwork(
+            giottoObj <- setNearestNetwork(
                 gobject = giottoObj,
-                nn_network = nnNetObj
+                x = nnNetObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
     }
@@ -3527,11 +3545,13 @@ giottoMasterToSuite <- function(
             )
         }
 
-        gobject <- set_spatial_enrichment(gobject,
-            spatial_enrichment,
+        gobject <- setSpatialEnrichment(gobject,
+            x = spatial_enrichment,
             spat_unit = "cell",
             feat_type = expression_feat,
-            enrichm_name = i
+            name = i,
+            verbose = FALSE,
+            initialize = FALSE
         )
     }
 
@@ -3957,10 +3977,12 @@ spatialdataToGiotto <- function(spatialdata_path = NULL,
                         cellShapeObj = cellShapeObj
                     )
                 }
-                gobject <- set_spatialNetwork(
+                gobject <- setSpatialNetwork(
                     gobject = gobject,
-                    spatial_network = spatObj,
-                    spat_unit = strsplit(tn, "_")[[1]][1]
+                    x = spatObj,
+                    spat_unit = strsplit(tn, "_")[[1]][1],
+                    verbose = FALSE,
+                    initialize = FALSE
                 )
             }
         }
@@ -3996,9 +4018,11 @@ spatialdataToGiotto <- function(spatialdata_path = NULL,
                         ),
                         my_rownames = rownames_vec
                     )
-                    gobject <- set_dimReduction(
+                    gobject <- setDimReduction(
                         gobject = gobject,
-                        dimObject = dobj
+                        x = dobj,
+                        verbose = FALSE,
+                        initialize = FALSE
                     )
                 }
             }
@@ -4028,9 +4052,11 @@ spatialdataToGiotto <- function(spatialdata_path = NULL,
                         misc = NULL,
                         my_rownames = rownames_vec
                     )
-                    gobject <- set_dimReduction(
+                    gobject <- setDimReduction(
                         gobject = gobject,
-                        dimObject = dobj
+                        x = dobj,
+                        verbose = FALSE,
+                        initialize = FALSE
                     )
                 }
             }
@@ -4060,8 +4086,9 @@ spatialdataToGiotto <- function(spatialdata_path = NULL,
                         misc = NULL,
                         my_rownames = rownames_vec
                     )
-                    gobject <- set_dimReduction(
-                        gobject = gobject, dimObject = dobj
+                    gobject <- setDimReduction(
+                        gobject = gobject, x = dobj,
+                        verbose = FALSE, initialize = FALSE
                     )
                 }
             }
@@ -4141,14 +4168,15 @@ spatialdataToGiotto <- function(spatialdata_path = NULL,
                     feat_type = nn_ft
                 )
 
-                gobject <- set_NearestNetwork(
+                gobject <- setNearestNetwork(
                     gobject = gobject,
-                    nn_network = netObj,
+                    x = netObj,
                     spat_unit = nn_su,
                     feat_type = nn_ft,
-                    nn_network_to_use = net_type,
-                    network_name = net_name,
-                    set_defaults = FALSE
+                    nn_type = net_type,
+                    name = net_name,
+                    verbose = FALSE,
+                    initialize = FALSE
                 )
             }
         }

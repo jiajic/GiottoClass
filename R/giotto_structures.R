@@ -1046,14 +1046,12 @@ addSpatialCentroidLocationsLayer <- function(gobject,
 
 
         # add centroids information
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <- set_polygon_info(gobject,
-            polygon_name = poly_info,
-            gpolygon = extended_spatvector,
-            verbose = FALSE
+        gobject <- setPolygonInfo(gobject,
+            x = extended_spatvector,
+            name = poly_info,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        # gobject@spatial_info[[poly_info]] = extended_spatvector
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
 
         return(gobject)

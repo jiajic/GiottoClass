@@ -1128,12 +1128,12 @@ calculateSpatCellMetadataProportions <- function(gobject,
         ## update parameters used ##
         gobject <- update_giotto_params(gobject, description = "_enrichment")
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <- set_spatial_enrichment(
+        gobject <- setSpatialEnrichment(
             gobject = gobject,
-            spatenrichment = enrObj
+            x = enrObj,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
         return(gobject)
     } else {

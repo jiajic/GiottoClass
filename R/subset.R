@@ -320,13 +320,12 @@
         sn[] <- sn[][to %in% cell_ids & from %in% cell_ids]
 
         # Set the spatialNetworkObj back into the gobject
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <<- set_spatialNetwork(
+        gobject <<- setSpatialNetwork(
             gobject = gobject,
-            spatial_network = sn,
-            verbose = FALSE
+            x = sn,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
         return(NULL) # ignore this
     })
@@ -394,13 +393,12 @@
 
         cdr[] <- cdr[][rownames(cdr[]) %in% cell_ids, ]
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <<- set_dimReduction(
+        gobject <<- setDimReduction(
             gobject = gobject,
-            dimObject = cdr,
-            verbose = FALSE
+            x = cdr,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         return(NULL) # ignore this
     })
 
@@ -417,13 +415,12 @@
 
         fdr[] <- fdr[][rownames(fdr[]) %in% feat_ids, ]
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <<- set_dimReduction(
+        gobject <<- setDimReduction(
             gobject = gobject,
-            dimObject = fdr,
-            verbose = FALSE
+            x = fdr,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
         return(NULL) # ignore this
     })
 
@@ -472,12 +469,11 @@
         vids <- which(spatIDs(nnObj) %in% cell_ids)
         nnObj[] <- igraph::induced_subgraph(graph = nnObj[], vids = vids)
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <<- set_NearestNetwork(gobject,
-            nn_network = nnObj,
-            verbose = FALSE
+        gobject <<- setNearestNetwork(gobject,
+            x = nnObj,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
     })
 
     return(gobject)
@@ -521,12 +517,11 @@
         filter_bool_cells <- spatIDs(spatEnrObj) %in% cell_ids
         spatEnrObj[] <- spatEnrObj[][filter_bool_cells]
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <<- set_spatial_enrichment(gobject,
-            spatenrichment = spatEnrObj,
-            verbose = FALSE
+        gobject <<- setSpatialEnrichment(gobject,
+            x = spatEnrObj,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
     })
 
     return(gobject)

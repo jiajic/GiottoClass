@@ -2212,9 +2212,6 @@ setDimReduction <- function(gobject,
     initialize = TRUE,
     ...) {
     assert_giotto(gobject)
-    reduction <- match.arg(reduction, choices = c("cells", "feats"))
-    # reduction_method = match.arg(reduction_method,
-    # choices = c('pca', 'umap', 'tsne'))
     if (!methods::hasArg(x)) {
         stop(wrap_txt("x (data to set) param must be given"))
     }
@@ -2225,187 +2222,72 @@ setDimReduction <- function(gobject,
         if (is.null(avail_ex)) stop(wrap_txt("Add expression information first"))
     }
 
-    # 1. Determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    nospec_name <- ifelse(is.null(match.call()$name), yes = TRUE, no = FALSE)
-    nospec_red <- ifelse(is.null(match.call()$reduction),
-        yes = TRUE, no = FALSE
-    )
-    nospec_red_method <- ifelse(is.null(match.call()$reduction_method),
-        yes = TRUE, no = FALSE
-    )
-    .external_accessor_dimred <- list(
-        nospec_unit = nospec_unit,
-        nospec_feat = nospec_feat,
-        nospec_name = nospec_name,
-        nospec_red = nospec_red,
-        nospec_red_method = nospec_red_method
-    )
-    # checked by internal setter to determine if called by external
+    # Validate input type
+    if (!inherits(x, c("dimObj", "NULL", "list"))) {
+        stop(wrap_txt("Only dimObj or lists of dimObj accepted.
+            For raw or external data, please first use readDimReducData()"))
+    }
 
+    # `nospec_*` are read from this frame by read_s4_nesting() to decide
+    # whether to overwrite the subobject's nesting values with caller-supplied
+    # ones, or vice versa. Compute before match.arg() resolves the vectors.
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
+    nospec_name <- is.null(match.call()$name)
+    nospec_red <- is.null(match.call()$reduction)
+    nospec_red_method <- is.null(match.call()$reduction_method)
 
-    # NATIVE INPUT TYPES
-    # 3. If input is dimObj or NULL, pass to internal
-    if (is.null(x) | inherits(x, "dimObj")) {
-        # pass to internal
-        gobject <- set_dimReduction(
-            gobject = gobject,
-            dimObject = x,
-            reduction = reduction,
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            reduction_method = reduction_method,
-            name = name,
-            provenance = provenance,
+    reduction <- match.arg(reduction, choices = c("cells", "feats"))
+
+    # List input: validate items and iterate. Only forward nesting args that
+    # the caller supplied; otherwise recursive call's match.call() would see
+    # the defaults and clobber each subobj's own slots.
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "dimObj", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("Only dimObj or lists of dimObj accepted.
+                For raw or external data, please first use readDimReducData()"))
+        }
+        base_args <- list(
             verbose = verbose,
-            set_defaults = FALSE,
             initialize = initialize
         )
+        if (!nospec_unit) base_args$spat_unit <- spat_unit
+        if (!nospec_feat) base_args$feat_type <- feat_type
+        if (!nospec_name) base_args$name <- name
+        if (!nospec_red) base_args$reduction <- reduction
+        if (!nospec_red_method) base_args$reduction_method <- reduction_method
+        if (!is.null(provenance)) base_args$provenance <- provenance
+        for (obj_i in seq_along(x)) {
+            gobject <- do.call(setDimReduction, c(
+                list(gobject = gobject, x = x[[obj_i]]),
+                base_args
+            ))
+        }
         return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "dimObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 4. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_dimReduction(
-                    gobject = gobject,
-                    dimObject = x[[obj_i]],
-                    reduction = reduction,
-                    spat_unit = spat_unit,
-                    feat_type = feat_type,
-                    reduction_method = reduction_method,
-                    name = name,
-                    provenance = provenance,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
-        }
     }
 
-    # catch
-    stop(wrap_txt("Only dimObj or lists of dimObj accepted.
-                For raw or external data, please first use readDimReducData()"))
-}
-
-
-
-
-
-
-
-#' @title Set dimension reduction
-#' @name set_dimReduction
-#' @description Function to set a dimension reduction slot
-#' @inheritParams data_access_params
-#' @param reduction reduction on cells or features
-#' @param reduction_method reduction method (e.g. "pca")
-#' @param name name of reduction results
-#' @param dimObject dimension object result to set
-#' @param provenance provenance information (optional)
-#' @param verbose be verbose
-#' @keywords internal
-#' @returns giotto object
-#' @noRd
-set_dimReduction <- function(gobject,
-    dimObject,
-    spat_unit = NULL,
-    feat_type = NULL,
-    reduction = c("cells", "feats"),
-    reduction_method = c("pca", "umap", "tsne"),
-    name = "pca",
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    assert_giotto(gobject)
-    reduction <- match.arg(reduction, choices = c("cells", "feats"))
-    # reduction_method = match.arg(reduction_method,
-    # choices = c('pca', 'umap', 'tsne'))
-    if (!methods::hasArg(dimObject)) {
-        stop(wrap_txt("dimObject param must be given"))
-    }
-
-    # 0. pass to external if not native format
-    if (!inherits(dimObject, c("dimObj", "NULL"))) {
-        stop(wrap_txt(deparse(substitute(dimObject)), "is not dimObj (set)
-                or NULL (remove)"))
-    }
-
-    # 1. Determine user inputs
-    p <- parent.frame() # Get values if called from external
-    call_from_external <- exists(".external_accessor_dimred", where = p)
-
-    if (call_from_external) {
-        nospec_unit <- p$.external_accessor_dimred$nospec_unit
-        nospec_feat <- p$.external_accessor_dimred$nospec_feat
-        nospec_name <- p$.external_accessor_dimred$nospec_name
-        nospec_red <- p$.external_accessor_dimred$nospec_red
-        nospec_red_method <- p$.external_accessor_dimred$nospec_red_method
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-        nospec_name <- ifelse(is.null(match.call()$name),
-            yes = TRUE, no = FALSE
-        )
-        nospec_red <- ifelse(is.null(match.call()$reduction),
-            yes = TRUE, no = FALSE
-        )
-        nospec_red_method <- ifelse(is.null(match.call()$reduction_method),
-            yes = TRUE, no = FALSE
-        )
-    }
-
-
-    # 2. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-        feat_type <- set_default_feat_type(
-            gobject = gobject,
-            spat_unit = spat_unit,
-            feat_type = feat_type
-        )
-    }
-
-    # 3. if input is NULL, remove object
-    if (is.null(dimObject)) {
+    # NULL: remove specified entry
+    if (is.null(x)) {
         if (isTRUE(verbose)) {
-            wrap_msg("NULL passed to dimObject param. Removing specified
-                    expression")
+            wrap_msg("NULL passed to x. Removing specified dimension
+                    reduction")
         }
-        slot(gobject, "dimension_reduction")[[reduction]][[spat_unit]][[feat_type]][[reduction_method]][[name]] <-
-            NULL
+        gobject@dimension_reduction[[reduction]][[spat_unit]][[
+            feat_type]][[reduction_method]][[name]] <- NULL
 
         # prune if empty
         if (length(gobject@dimension_reduction[[reduction]][[
-            spat_unit
-        ]][[feat_type]][[reduction_method]]) == 0L) {
+                spat_unit]][[feat_type]][[reduction_method]]) == 0L) {
             gobject@dimension_reduction[[reduction]][[spat_unit]][[
-                feat_type
-            ]][[reduction_method]] <- NULL
+                feat_type]][[reduction_method]] <- NULL
             if (length(gobject@dimension_reduction[[reduction]][[
-                spat_unit
-            ]][[feat_type]]) == 0) {
+                    spat_unit]][[feat_type]]) == 0) {
                 gobject@dimension_reduction[[reduction]][[
-                    spat_unit
-                ]][[feat_type]] <- NULL
+                    spat_unit]][[feat_type]] <- NULL
                 if (length(gobject@dimension_reduction[[
-                    reduction
-                ]][[spat_unit]]) == 0) {
+                        reduction]][[spat_unit]]) == 0) {
                     gobject@dimension_reduction[[reduction]][[
-                        spat_unit
-                    ]] <- NULL
+                        spat_unit]] <- NULL
                     if (length(gobject@dimension_reduction[[reduction]]) == 0) {
                         gobject@dimension_reduction[[reduction]] <- NULL
                         if (length(gobject@dimension_reduction) == 0) {
@@ -2416,20 +2298,16 @@ set_dimReduction <- function(gobject,
             }
         }
 
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
     }
 
-    # 4. import data from S4 if available
-    # NOTE: modifies spat_unit/feat_type/name/provenance/reduction/
-    # reduction_method/data slots
-    dimObject <- read_s4_nesting(dimObject)
+    # NOTE: read_s4_nesting modifies spat_unit / feat_type / name /
+    # reduction / reduction_method / provenance in this frame based on
+    # nospec_* flags.
+    x <- read_s4_nesting(x)
 
-
-    ## 5. check if specified name has already been used
+    # Notify on replacement
     potential_names <- list_dim_reductions_names(gobject,
         spat_unit = spat_unit,
         feat_type = feat_type,
@@ -2443,27 +2321,27 @@ set_dimReduction <- function(gobject,
         }
     }
 
-
-
-    ## 6. update and return giotto object
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
-            "Setting dimension reduction [", spatUnit(dimObject), "][",
-            featType(dimObject), "] ",
-            objName(dimObject),
+            "Setting dimension reduction [", spatUnit(x), "][",
+            featType(x), "] ",
+            objName(x),
             sep = ""
         )
     }
 
     slot(gobject, "dimension_reduction")[[reduction]][[spat_unit]][[
-        feat_type
-    ]][[reduction_method]][[name]] <- dimObject
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+        feat_type]][[reduction_method]][[name]] <- x
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+
+
+
+
+
 
 
 
@@ -2710,154 +2588,50 @@ setNearestNetwork <- function(gobject,
         }
     }
 
-    # 1. Determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    nospec_net <- ifelse(is.null(match.call()$nn_type), yes = TRUE, no = FALSE)
-    nospec_name <- ifelse(is.null(match.call()$name), yes = TRUE, no = FALSE)
-    .external_accessor_nn <- list(
-        nospec_unit = nospec_unit,
-        nospec_feat = nospec_feat,
-        nospec_net = nospec_net,
-        nospec_name = nospec_name
-    )
-    # checked by internal setter to determine if called by external
+    # Validate input type
+    if (!inherits(x, c("nnNetObj", "NULL", "list"))) {
+        stop(wrap_txt("Only nnNetObj or lists of nnNetObj accepted.
+            For raw or external data, please first use readNearestNetData()"))
+    }
 
+    # `nospec_*` are read from this frame by read_s4_nesting() to decide
+    # whether to overwrite the subobject's nesting values with caller-supplied
+    # ones, or vice versa.
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
+    nospec_net <- is.null(match.call()$nn_type)
+    nospec_name <- is.null(match.call()$name)
 
-    # NATIVE INPUT TYPES
-    # 3. If input is nnNetObj or NULL, pass to internal
-    if (is.null(x) || inherits(x, "nnNetObj")) {
-        # pass to internal
-        gobject <- set_NearestNetwork(
-            gobject = gobject,
-            nn_network = x,
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            nn_network_to_use = nn_type,
-            network_name = name,
-            provenance = provenance,
+    # List input: validate items and iterate. Only forward nesting args that
+    # the caller supplied; otherwise the recursive call's match.call() would
+    # see the defaults and clobber each subobj's own slots.
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "nnNetObj", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("Only nnNetObj or lists of nnNetObj accepted.
+                For raw or external data, please first use readNearestNetData()"))
+        }
+        base_args <- list(
             verbose = verbose,
-            set_defaults = FALSE,
             initialize = initialize
         )
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "nnNetObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 4. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_NearestNetwork(
-                    gobject = gobject,
-                    nn_network = x[[obj_i]],
-                    spat_unit = spat_unit,
-                    feat_type = feat_type,
-                    nn_network_to_use = nn_type,
-                    network_name = name,
-                    provenance = provenance,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
+        if (!nospec_unit) base_args$spat_unit <- spat_unit
+        if (!nospec_feat) base_args$feat_type <- feat_type
+        if (!nospec_net) base_args$nn_type <- nn_type
+        if (!nospec_name) base_args$name <- name
+        if (!is.null(provenance)) base_args$provenance <- provenance
+        for (obj_i in seq_along(x)) {
+            gobject <- do.call(setNearestNetwork, c(
+                list(gobject = gobject, x = x[[obj_i]]),
+                base_args
+            ))
         }
-    }
-    # catch
-    stop(wrap_txt("Only nnNetObj or lists of nnNetObj accepted.
-            For raw or external data, please first use readNearestNetData()"))
-}
-
-
-
-
-
-
-
-
-#' @title Set nearest network
-#' @name set_NearestNetwork
-#' @description Set a NN-network for a Giotto object
-#' @inheritParams data_access_params
-#' @param nn_network_to_use "kNN" or "sNN"
-#' @param network_name name of NN network to be used
-#' @param nn_network nnNetObj or igraph nearest network object. Data.table not
-#' yet supported.
-#' @param provenance provenance information (optional)
-#' @param verbose be verbose
-#' @returns giotto object
-#' @keywords internal
-#' @noRd
-set_NearestNetwork <- function(gobject,
-    nn_network,
-    spat_unit = NULL,
-    feat_type = NULL,
-    nn_network_to_use = "sNN",
-    network_name = "sNN.pca",
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    assert_giotto(gobject)
-    if (!methods::hasArg(nn_network)) {
-        stop(wrap_txt("nn_network param must be given"))
+        return(gobject)
     }
 
-    # 0. stop if not native formats
-    if (!inherits(nn_network, c("nnNetObj", "NULL"))) {
-        stop(wrap_txt(
-            deparse(substitute(nn_network)),
-            "is not nnNetObj (set). or NULL (remove)"
-        ))
-    }
-
-
-    # 1. determine user input
-    p <- parent.frame() # Get values if called from external
-    call_from_external <- exists(".external_accessor_nn", where = p)
-
-    if (isTRUE(call_from_external)) {
-        nospec_unit <- p$.external_accessor_nn$nospec_unit
-        nospec_feat <- p$.external_accessor_nn$nospec_feat
-        nospec_net <- p$.external_accessor_nn$nospec_net
-        nospec_name <- p$.external_accessor_nn$nospec_name
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-        nospec_net <- ifelse(is.null(match.call()$nn_network_to_use),
-            yes = TRUE, no = FALSE
-        )
-        nospec_name <- ifelse(is.null(match.call()$network_name),
-            yes = TRUE, no = FALSE
-        )
-    }
-
-    # change var name for use with read_s4_nesting()
-    name <- network_name
-    nn_type <- nn_network_to_use
-
-
-    # 2. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-        feat_type <- set_default_feat_type(
-            gobject = gobject,
-            spat_unit = spat_unit,
-            feat_type = feat_type
-        )
-    }
-
-    # 3. If input is null, remove object
-    if (is.null(nn_network)) {
-        vmsg(.v = verbose, "NULL passed to nn_network.
-                            Removing specified nearest neighbor network.")
+    # NULL: remove specified entry
+    if (is.null(x)) {
+        vmsg(.v = verbose, "NULL passed to x. Removing specified nearest
+            neighbor network.")
         gobject@nn_network[[spat_unit]][[feat_type]][[nn_type]][[name]] <- NULL
 
         # prune if empty
@@ -2874,21 +2648,15 @@ set_NearestNetwork <- function(gobject,
             }
         }
 
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
+    # NOTE: read_s4_nesting modifies spat_unit / feat_type / name / nn_type /
+    # provenance in this frame based on nospec_* flags.
+    x <- read_s4_nesting(x)
 
-    # 4. import data from S4 if available
-    # NOTE: modifies spat_unit/feat_type/name/nn_type/nn_network/provenance
-    nn_network <- read_s4_nesting(nn_network)
-    # Use updated values in nn_type and name instead of network_name and
-    # nn_network_to_use
-
-
-    ## 5. check if specified name has already been used
+    # Notify on replacement
     potential_names <- list_nearest_networks_names(gobject,
         spat_unit = spat_unit,
         feat_type = feat_type,
@@ -2901,22 +2669,25 @@ set_NearestNetwork <- function(gobject,
         ))
     }
 
-    ## 6. update and return giotto object
-    if (isTRUE(verbose) && isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(sprintf(
             "Setting nearest neighbor network [%s][%s] %s",
-            spatUnit(nn_network), featType(nn_network), objName(nn_network)
+            spatUnit(x), featType(x), objName(x)
         ))
     }
 
-    gobject@nn_network[[spat_unit]][[feat_type]][[nn_type]][[name]] <-
-        nn_network
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+    gobject@nn_network[[spat_unit]][[feat_type]][[nn_type]][[name]] <- x
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+
+
+
+
+
+
 
 
 
@@ -3205,7 +2976,6 @@ setSpatialNetwork <- function(gobject,
         stop(wrap_txt("x param (data to set) must be given"))
     }
 
-
     # check hierarchical slots
     if (getOption("giotto.check_valid", TRUE)) {
         avail_sl <- list_spatial_locations(gobject)
@@ -3214,129 +2984,51 @@ setSpatialNetwork <- function(gobject,
         }
     }
 
-
-    # 1. Determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_name <- ifelse(is.null(match.call()$name), yes = TRUE, no = FALSE)
-    .external_accessor_sn <- list(
-        nospec_unit = nospec_unit,
-        nospec_name = nospec_name
-    )
-    # checked by internal setter to determine if called by external
-
-
-    # NATIVE INPUT TYPES
-    # 3. If input is spatialNetworkObj or NULL, pass to internal
-    if (is.null(x) | inherits(x, "spatialNetworkObj")) {
-        # pass to internal
-        gobject <- set_spatialNetwork(
-            gobject = gobject,
-            spatial_network = x,
-            spat_unit = spat_unit,
-            name = name,
-            provenance = provenance,
-            verbose = verbose,
-            set_defaults = FALSE,
-            initialize = initialize
-        )
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "spatialNetworkObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 4. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_spatialNetwork(
-                    gobject = gobject,
-                    spatial_network = x[[obj_i]],
-                    spat_unit = spat_unit,
-                    name = name,
-                    provenance = provenance,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
-        }
-    }
-
-    # catch
-    stop(wrap_txt(
-        "Only spatialNetworkObj or lists of spatialNetworkObj accepted.
-        For raw or external data, please first use readSpatNetData()"
-    ))
-}
-
-
-
-
-
-
-
-#' @title Set spatial network
-#' @name set_spatialNetwork
-#' @description Function to set a spatial network
-#' @inheritParams data_access_params
-#' @param name name of spatial network
-#' @param provenance provenance name
-#' @param spatial_network spatial network
-#' @param verbose be verbose
-#' @returns giotto object
-#' @noRd
-set_spatialNetwork <- function(gobject,
-    spatial_network,
-    spat_unit = NULL,
-    name = NULL,
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    assert_giotto(gobject)
-    if (!methods::hasArg(spatial_network)) {
-        stop(wrap_txt("spatial_network param must be given"))
-    }
-
-    # 0. stop if not native formats
-    if (!inherits(spatial_network, c("spatialNetworkObj", "NULL"))) {
+    # Validate input type
+    if (!inherits(x, c("spatialNetworkObj", "NULL", "list"))) {
         stop(wrap_txt(
-            deparse(substitute(spatial_network)),
-            "is not spatialNetworkObj (set). or NULL (remove)"
+            "Only spatialNetworkObj or lists of spatialNetworkObj accepted.
+            For raw or external data, please first use readSpatNetData()"
         ))
     }
 
-    # 1. determine if input was supplied to spat_unit and name
-    p <- parent.frame() # Get values if called from external
-    call_from_external <- exists(".external_accessor_sn", where = p)
+    # `nospec_*` are read from this frame by read_s4_nesting() to decide
+    # whether to overwrite the subobject's nesting values with caller-supplied
+    # ones, or vice versa.
+    nospec_unit <- is.null(spat_unit)
+    nospec_name <- is.null(match.call()$name)
 
-    if (isTRUE(call_from_external)) {
-        nospec_unit <- p$.external_accessor_sn$nospec_unit
-        nospec_name <- p$.external_accessor_sn$nospec_name
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_name <- ifelse(is.null(match.call()$name),
-            yes = TRUE, no = FALSE
+    # List input: validate items and iterate via self-recursion.
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "spatialNetworkObj",
+                FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt(
+                "Only spatialNetworkObj or lists of spatialNetworkObj
+                accepted. For raw or external data, please first use
+                readSpatNetData()"
+            ))
+        }
+        base_args <- list(
+            verbose = verbose,
+            initialize = initialize
         )
+        if (!nospec_unit) base_args$spat_unit <- spat_unit
+        if (!nospec_name) base_args$name <- name
+        if (!is.null(provenance)) base_args$provenance <- provenance
+        for (obj_i in seq_along(x)) {
+            gobject <- do.call(setSpatialNetwork, c(
+                list(gobject = gobject, x = x[[obj_i]]),
+                base_args
+            ))
+        }
+        return(gobject)
     }
 
-
-    # 2. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-    }
-
-    # 3. If input is NULL, remove object
-    if (is.null(spatial_network)) {
+    # NULL: remove specified entry
+    if (is.null(x)) {
         if (isTRUE(verbose)) {
-            wrap_msg("NULL passed to spatial_network. Removing specified
-                    spatial network.")
+            wrap_msg("NULL passed to x. Removing specified spatial
+                    network.")
         }
         gobject@spatial_network[[spat_unit]][[name]] <- NULL
 
@@ -3348,20 +3040,15 @@ set_spatialNetwork <- function(gobject,
             }
         }
 
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
     }
 
+    # NOTE: read_s4_nesting modifies spat_unit / name / provenance in this
+    # frame based on the nospec_* flags.
+    x <- read_s4_nesting(x)
 
-    # 4. import data from S4 if available
-    # NOTE: modifies spat_unit/name/provenance/spatial_network
-    spatial_network <- read_s4_nesting(spatial_network)
-
-
-    # 5. check if specified name has already been used
+    # Notify on replacement
     if (isTRUE(verbose)) {
         potential_names <- list_spatial_networks_names(
             gobject = gobject,
@@ -3370,28 +3057,31 @@ set_spatialNetwork <- function(gobject,
         if (name %in% potential_names) {
             wrap_msg(
                 '> "', name,
-                '" already exists and will be replaced with new spatial network'
+                '" already exists and will be replaced with new
+                spatial network'
             )
         }
     }
 
-
-    # 6. update and return giotto object
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
-            "Setting spatial network [", spatUnit(spatial_network), "] ",
-            objName(spatial_network),
+            "Setting spatial network [", spatUnit(x), "] ",
+            objName(x),
             sep = ""
         )
     }
 
-    slot(gobject, "spatial_network")[[spat_unit]][[name]] <- spatial_network
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+    slot(gobject, "spatial_network")[[spat_unit]][[name]] <- x
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+
+
+
+
+
 
 
 
@@ -3883,180 +3573,45 @@ setPolygonInfo <- function(gobject,
         stop(wrap_txt("x param (data to be set) must be given"))
     }
 
-
-    # 1. determine user inputs
-    nospec_name <- !methods::hasArg(name)
-    .external_accessor_poly <- list(nospec_name = nospec_name)
-    # checked by internal setter to determine if called by external
-
-
-
-    # NATIVE INPUT TYPES
-    # 2. If input is giottoPolygon or NULL, pass to internal
-    if (inherits(x, c("giottoPolygon", "NULL"))) {
-        # pass to internal
-        gobject <- set_polygon_info(
-            gobject = gobject,
-            polygon_name = name,
-            gpolygon = x,
-            verbose = verbose,
-            initialize = !isTRUE(centroids_to_spatlocs) &
-                initialize # delay so centroids can be added
-        )
-
-        # Attach centroids if found
-        if (inherits(x, "giottoPolygon") & isTRUE(centroids_to_spatlocs)) {
-            if (!is.null(x@spatVectorCentroids)) {
-                centroids <- x@spatVectorCentroids
-                centroidsDT <- .spatvector_to_dt(centroids)
-                centroidsDT_loc <- centroidsDT[, .(poly_ID, x, y)]
-                colnames(centroidsDT_loc) <- c("cell_ID", "sdimx", "sdimy")
-
-                locsObj <- create_spat_locs_obj(
-                    name = "raw",
-                    coordinates = centroidsDT_loc,
-                    spat_unit = x@name, # tag same spat_unit as poly
-                    provenance = x@name,
-                    misc = NULL
-                )
-
-                # Forward spat_unit to setSpatialLocations only when the user
-                # explicitly supplied `name` to setPolygonInfo; otherwise let
-                # locsObj's own @spat_unit win. Never forward `name` so that
-                # locsObj's @name ("raw") is used.
-                sl_args <- list(
-                    gobject = gobject, x = locsObj,
-                    verbose = verbose, initialize = initialize
-                )
-                if (!nospec_name) sl_args$spat_unit <- name
-                gobject <- do.call(setSpatialLocations, sl_args)
-            }
-        }
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "giottoPolygon", FUN.VALUE = logical(1L))
-        )) {
-            # 3. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_polygon_info(
-                    gobject = gobject,
-                    gpolygon = x[[obj_i]],
-                    polygon_name = name,
-                    verbose = verbose,
-                    initialize = !isTRUE(centroids_to_spatlocs) & initialize
-                )
-
-                # Attach centroids if found
-                if (inherits(x[[obj_i]], "giottoPolygon") &
-                    isTRUE(centroids_to_spatlocs)) {
-                    if (!is.null(x[[obj_i]]@spatVectorCentroids)) {
-                        centroids <- x[[obj_i]]@spatVectorCentroids
-                        centroidsDT <- .spatvector_to_dt(centroids)
-                        centroidsDT_loc <- centroidsDT[, .(poly_ID, x, y)]
-                        colnames(centroidsDT_loc) <- c(
-                            "cell_ID", "sdimx", "sdimy"
-                        )
-
-                        locsObj <- create_spat_locs_obj(
-                            name = "raw",
-                            coordinates = centroidsDT_loc,
-                            spat_unit = x[[obj_i]]@name,
-                            # tag same spat_unit as poly
-                            provenance = x[[obj_i]]@name,
-                            # TODO change this if polygons get prov
-                            misc = initialize
-                        )
-
-                        sl_args <- list(
-                            gobject = gobject, x = locsObj,
-                            verbose = verbose, initialize = initialize
-                        )
-                        if (!nospec_name) sl_args$spat_unit <- name
-                        gobject <- do.call(setSpatialLocations, sl_args)
-                    }
-                }
-            }
-            return(gobject)
-        }
-    }
-
-    # catch
-    stop(wrap_txt("Only giottoPolygon or lists of giottoPolygon accepted.
-                For raw or external data, please first use readPolygonData()",
-        errWidth = TRUE
-    ))
-}
-
-
-
-
-
-
-#' @title Set polygon info
-#' @name set_polygon_info
-#' @description Set giotto polygon spatVector
-#' @inheritParams data_access_params
-#' @param polygon_name name of polygons. Default
-#' "cell" (only used when gpolygon is length of 1)
-#' @param gpolygon giottoPolygon object
-#' @param verbose be verbose
-#' @returns giotto object
-#' @noRd
-set_polygon_info <- function(gobject,
-    gpolygon,
-    polygon_name = "cell",
-    verbose = TRUE,
-    initialize = FALSE) {
-    assert_giotto(gobject)
-    if (!methods::hasArg(gpolygon)) {
-        stop(wrap_txt("gpolygon param must be given"))
-    }
-
-    # 0. stop if not native formats
-    if (inherits(gpolygon, "list")) {
-        if (!all(
-            vapply(gpolygon, inherits, "giottoPolygon", FUN.VALUE = logical(1L))
-        )) {
-            stop(wrap_txt("If providing a list to internal setter, only
-                lists of",
-                "giottoPolygon objects are permitted",
-                errWidth = TRUE
-            ))
-        }
-    }
-    if (!inherits(gpolygon, c("giottoPolygon", "NULL", "list"))) {
-        stop(wrap_txt(
-            deparse(substitute(gpolygon)),
-            "is not a giottoPolygon (set), list of giottoPolygons (set),
-                or NULL (remove)"
+    # Validate input type
+    if (!inherits(x, c("giottoPolygon", "NULL", "list"))) {
+        stop(wrap_txt("Only giottoPolygon or lists of giottoPolygon accepted.
+            For raw or external data, please first use readPolygonData()",
+            errWidth = TRUE
         ))
     }
 
-    # 1. determine user input
-    p <- parent.frame() # get values if called from external
-    call_from_external <- exists(".external_accessor_poly", where = p)
+    # `nospec_name` is read by read_s4_nesting() to decide whether to override
+    # the subobject's @name with the caller-supplied `name`.
+    nospec_name <- !methods::hasArg(name)
 
-    if (isTRUE(call_from_external)) {
-        nospec_name <- p$.external_accessor_poly$nospec_name
-    } else {
-        nospec_name <- !methods::hasArg(polygon_name)
+    # List input: validate items and iterate. Only forward `name` if the user
+    # supplied it, so each subobj's own @name is honored by read_s4_nesting().
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "giottoPolygon", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("Only giottoPolygon or lists of giottoPolygon
+                accepted. For raw or external data, please first use
+                readPolygonData()", errWidth = TRUE))
+        }
+        base_args <- list(
+            centroids_to_spatlocs = centroids_to_spatlocs,
+            verbose = verbose,
+            initialize = initialize
+        )
+        if (!nospec_name) base_args$name <- name
+        for (obj_i in seq_along(x)) {
+            gobject <- do.call(setPolygonInfo, c(
+                list(gobject = gobject, x = x[[obj_i]]),
+                base_args
+            ))
+        }
+        return(gobject)
     }
 
-
-    # use name instead of polygon_name for compatibility with S4 reading
-    name <- polygon_name
-
-    # 2. set default spat_unit
-    # not needed when general default exists ('cell')
-
-    # 3.1 if input is NULL, remove object
-    if (is.null(gpolygon)) {
+    # NULL: remove specified entry
+    if (is.null(x)) {
         if (isTRUE(verbose)) {
-            wrap_msg("NULL passed to gpolygon. Removing specified polygon
+            wrap_msg("NULL passed to x. Removing specified polygon
                     information")
         }
         gobject@spatial_info[[name]] <- NULL
@@ -4066,90 +3621,72 @@ set_polygon_info <- function(gobject,
             gobject@spatial_info <- NULL
         }
 
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
     }
 
-    # 3.2 if input is list, set list
-    if (inherits(gpolygon, "list")) {
-        # ensure list names are accurate
-        gp_names <- names(gpolygon)
-        if (is.null(gp_names)) {
-            stop(wrap_txt('if "gpolygon" is a list, then it must be a named
-                        list',
-                errWidth = TRUE
-            ))
-        }
-        if (any(is.na(gp_names))) {
-            stop(wrap_txt('No NA values allowed in "gpolygon" list names'))
-        }
-        dup_bool <- duplicated(gp_names)
-        if (any(dup_bool)) {
-            stop(wrap_txt(
-                "Duplicated list names:", gp_names[dup_bool],
-                "\nAll gpolygon list names must be unique"
-            ))
-        }
+    # Single giottoPolygon
+    # NOTE: read_s4_nesting modifies `name` in this frame based on
+    # nospec_name (subobj's @name wins when caller didn't supply one).
+    x <- read_s4_nesting(x)
 
-        # iterate through list
-        for (gp_name in gp_names) {
-            gpolygon[[gp_name]]@name <- gp_name
-
-            ## check if specified name has already been used
-            potential_names <- names(gobject@spatial_info)
-            if (gp_name %in% potential_names) {
-                if (verbose) {
-                    wrap_msg('> "', gp_name, '" already exists and will be
-                            replaced with new giotto polygon \n')
-                }
-            }
-
-            # set items
-            gobject@spatial_info[[gp_name]] <- gpolygon[[gp_name]]
-        }
-
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
-    }
-
-
-
-    # 4. import data from S4 if available (for single objects)
-    # NOTE: modifies name/gpolygon
-    gpolygon <- read_s4_nesting(gpolygon)
-
-
-    # 5. check if specified name has already been used
-    potential_names <- names(gobject@spatial_info)
-    if (name %in% potential_names) {
-        if (verbose) {
+    # Notify on replacement
+    if (name %in% names(gobject@spatial_info)) {
+        if (isTRUE(verbose)) {
             wrap_msg('> "', name, '" already exists and will be replaced
                     with new giotto polygon \n')
         }
     }
 
-
-    ## 6. update and return giotto object
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
-            "Setting polygon info [", objName(gpolygon), "] ",
+            "Setting polygon info [", objName(x), "]",
             sep = ""
         )
     }
 
-    gobject@spatial_info[[name]] <- gpolygon
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
+    gobject@spatial_info[[name]] <- x
+
+    # Attach centroids as spatLocsObj if requested. Defer the gobject's
+    # `initialize` until after the centroids are written so the parent
+    # state stays consistent through both writes.
+    if (isTRUE(centroids_to_spatlocs) &&
+            !is.null(x@spatVectorCentroids)) {
+        centroids <- x@spatVectorCentroids
+        centroidsDT <- .spatvector_to_dt(centroids)
+        centroidsDT_loc <- centroidsDT[, .(poly_ID, x, y)]
+        colnames(centroidsDT_loc) <- c("cell_ID", "sdimx", "sdimy")
+
+        locsObj <- create_spat_locs_obj(
+            name = "raw",
+            coordinates = centroidsDT_loc,
+            spat_unit = x@name, # tag same spat_unit as poly
+            provenance = x@name,
+            misc = NULL
+        )
+
+        # Forward spat_unit to setSpatialLocations only when the user
+        # explicitly supplied `name` to setPolygonInfo; otherwise let
+        # locsObj's own @spat_unit win. Never forward `name` so that
+        # locsObj's @name ("raw") is used.
+        sl_args <- list(
+            gobject = gobject, x = locsObj,
+            verbose = verbose, initialize = initialize
+        )
+        if (!nospec_name) sl_args$spat_unit <- name
+        gobject <- do.call(setSpatialLocations, sl_args)
         return(gobject)
     }
+
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+
+
+
+
 
 
 
@@ -4632,139 +4169,48 @@ setSpatialEnrichment <- function(gobject,
         }
     }
 
-    # 1. determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    nospec_name <- ifelse(is.null(match.call()$name), yes = TRUE, no = FALSE)
-    .external_accessor_spatenr <- list(
-        nospec_unit = nospec_unit,
-        nospec_feat = nospec_feat,
-        nospec_name = nospec_name
-    )
-    # checked by internal setter to determine if called by external
+    # Validate input type
+    if (!inherits(x, c("spatEnrObj", "NULL", "list"))) {
+        stop(wrap_txt("Only spatEnrObj or lists of spatEnrObj accepted.
+            For raw or external data, please first use readSpatEnrichData()"))
+    }
 
+    # `nospec_*` are read from this frame by read_s4_nesting() to decide
+    # whether to overwrite the subobject's nesting values with caller-supplied
+    # ones, or vice versa.
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
+    nospec_name <- is.null(match.call()$name)
 
-    # NATIVE INPUT TYPES
-    # 3. if input is spatEnrObj or NULL, pass to internal
-    if (is.null(x) | inherits(x, "spatEnrObj")) {
-        # pass to internal
-        gobject <- set_spatial_enrichment(
-            gobject = gobject,
-            spatenrichment = x,
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            enrichm_name = name,
+    # List input: validate items and iterate via self-recursion. Only forward
+    # nesting args that the caller supplied.
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "spatEnrObj", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("Only spatEnrObj or lists of spatEnrObj accepted.
+                For raw or external data, please first use readSpatEnrichData()"))
+        }
+        base_args <- list(
             verbose = verbose,
-            set_defaults = FALSE,
             initialize = initialize
         )
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "spatEnrObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 4. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_spatial_enrichment(
-                    gobject = gobject,
-                    spatenrichment = x[[obj_i]],
-                    spat_unit = spat_unit,
-                    feat_type = feat_type,
-                    enrichm_name = name,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
+        if (!nospec_unit) base_args$spat_unit <- spat_unit
+        if (!nospec_feat) base_args$feat_type <- feat_type
+        if (!nospec_name) base_args$name <- name
+        if (!is.null(provenance)) base_args$provenance <- provenance
+        for (obj_i in seq_along(x)) {
+            gobject <- do.call(setSpatialEnrichment, c(
+                list(gobject = gobject, x = x[[obj_i]]),
+                base_args
+            ))
         }
-    }
-    # catch
-    stop(wrap_txt("Only spatEnrObj or lists of spatEnrObj accepted.
-            For raw or external data, please first use readSpatEnrichData()"))
-}
-
-
-
-
-
-
-
-
-#' @title Set spatial enrichment
-#' @name set_spatial_enrichment
-#' @description Function to set a spatial enrichment slot
-#' @inheritParams data_access_params
-#' @param enrichm_name name of spatial enrichment results. Default "DWLS"
-#' @param spatenrichment spatial enrichment results
-#' @param provenance provenance information (optional)
-#' @param verbose be verbose
-#' @returns giotto object
-#' @noRd
-set_spatial_enrichment <- function(gobject,
-    spatenrichment,
-    spat_unit = NULL,
-    feat_type = NULL,
-    enrichm_name = "enrichment",
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    assert_giotto(gobject)
-    if (!methods::hasArg(spatenrichment)) {
-        stop(wrap_txt("spatenrichment param must be given"))
+        return(gobject)
     }
 
-    # 0. stop if not native formats
-    if (!inherits(spatenrichment, c("spatEnrObj", "NULL"))) {
-        stop(wrap_txt(
-            deparse(substitute(spatenrichment)),
-            "is not spatEnrObj (set). or NULL (remove)"
-        ))
-    }
-
-    # 1. Check user input
-    p <- parent.frame() # Get values if called from external
-    call_from_external <- exists(".external_accessor_spatenr", where = p)
-
-    if (isTRUE(call_from_external)) {
-        nospec_unit <- p$.external_accessor_spatenr$nospec_unit
-        nospec_feat <- p$.external_accessor_spatenr$nospec_feat
-        nospec_name <- p$.external_accessor_spatenr$nospec_name
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-        nospec_name <- ifelse(is.null(match.call()$enrichm_name),
-            yes = TRUE, no = FALSE
-        )
-    }
-
-    # change var name to be compatible with read_S4_nesting()
-    name <- enrichm_name
-
-
-    # 2. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-        feat_type <- set_default_feat_type(
-            gobject = gobject,
-            spat_unit = spat_unit,
-            feat_type = feat_type
-        )
-    }
-
-    # 3. Remove object if input is NULL
-    if (is.null(spatenrichment)) {
+    # NULL: remove specified entry
+    if (is.null(x)) {
         if (isTRUE(verbose)) {
-            wrap_msg("NULL passed to spatenrichment. Removing specified
-                    spatial enrichment.")
+            wrap_msg("NULL passed to x. Removing specified spatial
+                    enrichment.")
         }
         gobject@spatial_enrichment[[spat_unit]][[feat_type]][[name]] <- NULL
 
@@ -4779,20 +4225,15 @@ set_spatial_enrichment <- function(gobject,
             }
         }
 
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
     }
 
-    # 4. Import info from S4 if given
-    # NOTE: modifies spat_unit/feat_type/name/provenance/spatenrichment
-    spatenrichment <- read_s4_nesting(spatenrichment)
-    # use updated values in name instead of enrichm_name
+    # NOTE: read_s4_nesting modifies spat_unit / feat_type / name /
+    # provenance in this frame based on nospec_* flags.
+    x <- read_s4_nesting(x)
 
-
-    # 5. check if specified name has already been used
+    # Notify on replacement
     if (isTRUE(verbose)) {
         potential_names <- list_spatial_enrichments_names(
             gobject = gobject,
@@ -4808,24 +4249,27 @@ set_spatial_enrichment <- function(gobject,
         }
     }
 
-    # 6. update and return giotto object
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
-            "Setting spatial enrichment [", spatUnit(spatenrichment), "][",
-            featType(spatenrichment), "] ",
-            objName(spatenrichment),
+            "Setting spatial enrichment [", spatUnit(x), "][",
+            featType(x), "] ",
+            objName(x),
             sep = ""
         )
     }
 
-    gobject@spatial_enrichment[[spat_unit]][[feat_type]][[name]] <-
-        spatenrichment
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+    gobject@spatial_enrichment[[spat_unit]][[feat_type]][[name]] <- x
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+
+
+
+
+
+
 
 
 
