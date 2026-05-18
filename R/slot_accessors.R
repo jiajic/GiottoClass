@@ -585,261 +585,70 @@ setCellMetadata <- function(gobject,
     if (getOption("giotto.check_valid", TRUE)) {
         used_su <- list_cell_id_names(gobject)
         if (is.null(used_su)) {
-            stop(wrap_txt("Add expression or spatial (polygon) information first"))
-        }
-    }
-
-    # 1. Determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    .external_accessor_cellmeta <- list(
-        nospec_unit = nospec_unit,
-        nospec_feat = nospec_feat
-    )
-    # checked by internal setter to determine if called by external
-
-    # SINGLE INPUT
-    # 2. if input is cellMetaObj or NULL, pass to internal
-    if (is.null(x) | inherits(x, "cellMetaObj")) {
-        # pass to internal
-        gobject <- set_cell_metadata(
-            gobject = gobject,
-            metadata = x,
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            provenance = provenance,
-            verbose = verbose,
-            set_defaults = FALSE,
-            initialize = initialize
-        )
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "cellMetaObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 3. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_cell_metadata(
-                    gobject = gobject,
-                    metadata = x[[obj_i]],
-                    spat_unit = spat_unit,
-                    feat_type = feat_type,
-                    provenance = provenance,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
-        }
-    }
-
-    # catch
-    stop(wrap_txt("only cellMetaObj or lists of cellMetaObj accepted.
-                For raw or external data, please first use readCellMetadata()"))
-}
-
-
-
-
-
-
-#' @title Set cell metadata
-#' @name set_cell_metadata
-#' @description Function to set cell metadata information into giotto object
-#' @inheritParams data_access_params
-#' @param provenance provenance information to set
-#' @param metadata cellMetaObj or data.table containing cell metadata.
-#' Setting NULL will remove the object. Passing 'initialize' will reset
-#' the object.
-#' @param verbose be verbose
-#' @returns giotto object
-#' @keywords internal
-#' @noRd
-set_cell_metadata <- function(gobject,
-    metadata,
-    spat_unit = NULL,
-    feat_type = NULL,
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    # data.table vars
-    cell_ID <- NULL
-
-    assert_giotto(gobject)
-    if (!methods::hasArg(metadata)) {
-        stop(wrap_txt("metadata param must be given"))
-    }
-
-    if (!inherits(metadata, c("cellMetaObj", "NULL")) &
-        !identical(metadata, "initialize")) {
-        stop(wrap_txt(
-            deparse(substitute(metadata)),
-            "is not a cellMetaObj (set) or NULL (remove)"
-        ))
-    }
-
-
-    # 1. determine if user input was supplied
-    p <- parent.frame() # get values if called from external
-    call_from_external <- exists(".external_accessor_cellmeta", where = p)
-
-    if (call_from_external) {
-        nospec_unit <- p$.external_accessor_cellmeta$nospec_unit
-        nospec_feat <- p$.external_accessor_cellmeta$nospec_feat
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    }
-
-
-    # 2. set spat unit/ feat type if needed
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-        feat_type <- set_default_feat_type(
-            gobject = gobject,
-            spat_unit = spat_unit,
-            feat_type = feat_type
-        )
-    }
-
-    # 3.1 if input is NULL, remove object
-    if (is.null(metadata)) {
-        if (isTRUE(verbose)) {
-            message("NULL passed to metadata.\n Removing specified metadata.")
-        }
-        gobject@cell_metadata[[spat_unit]][[feat_type]] <- NULL
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
-    }
-
-    # 3.2 if input is 'initialize', RESET/reinitialize object
-    if (inherits(metadata, "character")) {
-        if (identical(metadata, "initialize")) {
-            if (isTRUE(verbose)) message("Initializing specified metadata.")
-            gobject@cell_metadata[[spat_unit]][[
-                feat_type
-            ]] <- create_cell_meta_obj(
-                metaDT = data.table::data.table(cell_ID = get_cell_id(gobject,
-                    spat_unit = spat_unit
-                )),
-                col_desc = c(cell_ID = "cell-specific unique ID value"),
-                spat_unit = spat_unit,
-                feat_type = feat_type,
-                provenance = if (is.null(provenance)) spat_unit else provenance
-            )
-            if (isTRUE(initialize)) {
-                return(initialize(gobject))
-            } else {
-                return(gobject)
-            }
-        }
-    }
-
-
-    # 4.1 import info if S4 object, else generate S4
-    if (inherits(metadata, "cellMetaObj")) {
-        if (isTRUE(nospec_unit)) {
-            if (!is.na(slot(metadata, "spat_unit"))) {
-                spat_unit <- slot(metadata, "spat_unit")
-            }
-        } else {
-            slot(metadata, "spat_unit") <- spat_unit
-        }
-        if (isTRUE(nospec_feat)) {
-            if (!is.na(slot(metadata, "feat_type"))) {
-                feat_type <- slot(metadata, "feat_type")
-            }
-        } else {
-            slot(metadata, "feat_type") <- feat_type
-        }
-        if (!is.null(provenance)) {
-            slot(metadata, "provenance") <- provenance
-        }
-    } else {
-        # 4.2 if nested list structure, extract spat_unit/feat_type
-        if (inherits(metadata, "list")) {
-            cellMetaObj_list <- .read_cell_metadata(gobject,
-                metadata = metadata,
-                provenance = if (is.null(provenance)) spat_unit else provenance
-            )
-            # recursively run
-            for (obj_i in seq_along(cellMetaObj_list)) {
-                # (provenance info set during prev. step)
-                gobject <- set_cell_metadata(gobject,
-                    metadata = cellMetaObj_list[[obj_i]]
-                )
-            }
-            if (isTRUE(initialize)) {
-                initialize(gobject)
-            } else {
-                return(gobject)
-            }
-        }
-
-        # 4.3 otherwise assume data.frame type object
-
-        if (is.null(spat_unit) | is.null(feat_type)) {
-            stop(wrap_txt("Add expression or polygon info first. Alternatively,
-                        specify expected spat_unit and feat_type using
-                        activeSpatUnit() and activeFeatType()",
-                errWidth = TRUE
+            stop(wrap_txt(
+                "Add expression or spatial (polygon) information first"
             ))
         }
-
-
-        metadata <- data.table::as.data.table(metadata)
-
-        # if cell ID col is missing, try to automatically set
-        if (is.null(metadata[["cell_ID"]])) {
-            id_error <- try(metadata[, cell_ID := get_cell_id(
-                gobject,
-                spat_unit = spat_unit
-            )], silent = TRUE)
-            if (inherits(id_error, "try-error")) {
-                stop("cannot automatically set metadata cell_ID based on
-                    gobject cell_ID slot.")
-            }
-        } else if (spat_unit %in% list_cell_id_names(gobject)) {
-            # if cell ID col is present in both, try to match
-            if (!identical(
-                metadata[, cell_ID],
-                get_cell_id(gobject, spat_unit = spat_unit)
-            )) {
-                stop('metadata cell_ID does not match that in gobject cell_ID
-                    slot for spat_unit "', spat_unit, '".\n')
-            }
-        }
-
-        # put cell_ID first
-        all_colnames <- colnames(metadata)
-        other_colnames <- grep("cell_ID", all_colnames,
-            invert = TRUE,
-            value = TRUE
-        )
-        metadata <- metadata[, c("cell_ID", other_colnames), with = FALSE]
-
-        metadata <- new("cellMetaObj",
-            metaDT = metadata,
-            col_desc = NA_character_, # unknown
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            provenance = if (is.null(provenance)) spat_unit else provenance
-        )
     }
 
-    # 5. check if nesting address is already used - just feat_type for metadata
+    # Validate input type
+    if (!inherits(x, c("cellMetaObj", "NULL", "list"))) {
+        stop(wrap_txt("only cellMetaObj or lists of cellMetaObj accepted.
+            For raw or external data, please first use readCellMetadata()"))
+    }
+
+    # List input: validate items and iterate via self-recursion
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "cellMetaObj", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("only cellMetaObj or lists of cellMetaObj accepted.
+                For raw or external data, please first use readCellMetadata()"))
+        }
+        for (obj_i in seq_along(x)) {
+            gobject <- setCellMetadata(
+                gobject = gobject,
+                x = x[[obj_i]],
+                spat_unit = spat_unit,
+                feat_type = feat_type,
+                provenance = provenance,
+                verbose = verbose,
+                initialize = initialize
+            )
+        }
+        return(gobject)
+    }
+
+    # `nospec_*` are read from this frame by read_s4_nesting() / direct slot
+    # writes below, to decide whether to overwrite the subobject's nesting
+    # values with caller-supplied ones.
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
+
+    # NULL: remove specified entry
+    if (is.null(x)) {
+        if (isTRUE(verbose)) {
+            message("NULL passed to x.\n Removing specified metadata.")
+        }
+        gobject@cell_metadata[[spat_unit]][[feat_type]] <- NULL
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
+    }
+
+    # Single cellMetaObj — resolve nesting against subobject's own slots
+    if (isTRUE(nospec_unit)) {
+        if (!is.na(slot(x, "spat_unit"))) spat_unit <- slot(x, "spat_unit")
+    } else {
+        slot(x, "spat_unit") <- spat_unit
+    }
+    if (isTRUE(nospec_feat)) {
+        if (!is.na(slot(x, "feat_type"))) feat_type <- slot(x, "feat_type")
+    } else {
+        slot(x, "feat_type") <- feat_type
+    }
+    if (!is.null(provenance)) {
+        slot(x, "provenance") <- provenance
+    }
+
+    # Notify on replacement
     potential_names <- list_cell_metadata(
         gobject,
         spat_unit = spat_unit
@@ -848,31 +657,50 @@ set_cell_metadata <- function(gobject,
         if (isTRUE(verbose)) {
             wrap_msg(
                 '> Cell metadata for spat_unit "',
-                spat_unit, '" and feat_type "',
-                feat_type,
+                spat_unit, '" and feat_type "', feat_type,
                 '" already exists and will be replaced with new metadata.'
             )
         }
     }
 
+    gobject@cell_metadata[[spat_unit]][[feat_type]] <- x
 
-    # 6. set and return gobject
-    gobject@cell_metadata[[spat_unit]][[feat_type]] <- metadata
-
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
             "Setting cell metadata [",
-            spatUnit(metadata), "][", featType(metadata), "] ",
+            spatUnit(x), "][", featType(x), "] ",
             sep = ""
         )
     }
 
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+#' Build an empty cellMetaObj seeded with the gobject's cell_IDs.
+#' Used by initialize() and init_cell_metadata() to create placeholder
+#' metadata for a (spat_unit, feat_type) pair without touching slot
+#' contents directly.
+#' @noRd
+.create_init_cell_meta <- function(gobject, spat_unit, feat_type,
+        provenance = NULL) {
+    create_cell_meta_obj(
+        metaDT = data.table::data.table(
+            cell_ID = get_cell_id(gobject, spat_unit = spat_unit)
+        ),
+        col_desc = c(cell_ID = "cell-specific unique ID value"),
+        spat_unit = spat_unit,
+        feat_type = feat_type,
+        provenance = if (is.null(provenance)) spat_unit else provenance
+    )
+}
+
+
+
+
+
+
 
 
 ## feature metadata slot ####
@@ -998,256 +826,61 @@ setFeatureMetadata <- function(gobject,
         ))
     }
 
-    # 1. Determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    .external_accessor_featmeta <- list(
-        nospec_unit = nospec_unit,
-        nospec_feat = nospec_feat
-    )
-    # checked by internal setter to determine if called by external
-
-    # SINGLE INPUT
-    # 2. if input is featMetaObj or NULL, pass to internal
-    if (is.null(x) | inherits(x, "featMetaObj")) {
-        # pass to internal
-        gobject <- set_feature_metadata(
-            gobject = gobject,
-            metadata = x,
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            provenance = provenance,
-            verbose = verbose,
-            set_defaults = FALSE,
-            initialize = initialize
-        )
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "featMetaObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 3. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_feature_metadata(
-                    gobject = gobject,
-                    metadata = x[[obj_i]],
-                    spat_unit = spat_unit,
-                    feat_type = feat_type,
-                    provenance = provenance,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
-        }
+    # Validate input type
+    if (!inherits(x, c("featMetaObj", "NULL", "list"))) {
+        stop(wrap_txt("only featMetaObj or lists of featMetaObj accepted.
+            For raw or external data, please first use readFeatMetadata()"))
     }
 
-    # catch
-    stop(wrap_txt("only featMetaObj or lists of featMetaObj accepted.
+    # List input: validate items and iterate via self-recursion
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "featMetaObj", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("only featMetaObj or lists of featMetaObj accepted.
                 For raw or external data, please first use readFeatMetadata()"))
-}
-
-
-
-
-
-
-
-#' @title Set feature metadata
-#' @name set_feature_metadata
-#' @description Function to set feature metadata information into giotto object
-#' @inheritParams data_access_params
-#' @param provenance provenance information to set
-#' @param metadata featMetaObj or data.table containing feature metadata.
-#' Setting NULL will remove the object. Passing 'initialize' will reset the
-#' object.
-#' @param verbose be verbose
-#' @returns giotto object
-#' @keywords internal
-#' @noRd
-set_feature_metadata <- function(gobject,
-    metadata,
-    spat_unit = NULL,
-    feat_type = NULL,
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    # data.table vars
-    feat_ID <- NULL
-
-    assert_giotto(gobject)
-    if (!methods::hasArg(metadata)) {
-        stop(wrap_txt("metadata param must be given"))
-    }
-
-    if (!inherits(metadata, c("featMetaObj", "NULL")) &
-        !identical(metadata, "initialize")) {
-        stop(wrap_txt(
-            deparse(substitute(metadata)),
-            "is not featMetaObj (set) or NULL (remove)"
-        ))
-    }
-
-
-    # 1. determine if user input was supplied
-    p <- parent.frame() # get values if called from external
-    call_from_external <- exists(".external_accessor_featmeta", where = p)
-
-    if (call_from_external) {
-        nospec_unit <- p$.external_accessor_featmeta$nospec_unit
-        nospec_feat <- p$.external_accessor_featmeta$nospec_feat
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    }
-
-
-    # 2. set spat unit/ feat type if needed
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-        feat_type <- set_default_feat_type(
-            gobject = gobject,
-            spat_unit = spat_unit,
-            feat_type = feat_type
-        )
-    }
-
-    # 3.1 if input is NULL, remove object
-    if (is.null(metadata)) {
-        if (isTRUE(verbose)) {
-            wrap_msg("NULL passed to metadata.\n Removing specified metadata.")
         }
-        gobject@feat_metadata[[spat_unit]][[feat_type]] <- NULL
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
-    }
-
-    # 3.2 if input is 'initialize', RESET/reinitialize object
-    if (inherits(metadata, "character")) {
-        if (metadata == "initialize") {
-            if (isTRUE(verbose)) message("Initializing specified metadata.")
-            gobject@feat_metadata[[spat_unit]][[
-                feat_type
-            ]] <- create_feat_meta_obj(
-                metaDT = data.table::data.table(feat_ID = get_feat_id(gobject,
-                    feat_type = feat_type
-                )),
-                col_desc = c(feat_ID = "feature-specific unique ID value"),
+        for (obj_i in seq_along(x)) {
+            gobject <- setFeatureMetadata(
+                gobject = gobject,
+                x = x[[obj_i]],
                 spat_unit = spat_unit,
                 feat_type = feat_type,
-                provenance = if (is.null(provenance)) spat_unit else provenance
+                provenance = provenance,
+                verbose = verbose,
+                initialize = initialize
             )
-            if (isTRUE(initialize)) {
-                return(initialize(gobject))
-            } else {
-                return(gobject)
-            }
         }
+        return(gobject)
     }
 
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
 
-    # 4.1 import info if S4 object, else generate S4
-    if (inherits(metadata, "featMetaObj")) {
-        if (isTRUE(nospec_unit)) {
-            if (!is.na(slot(metadata, "spat_unit"))) {
-                spat_unit <- slot(metadata, "spat_unit")
-            }
-        } else {
-            slot(metadata, "spat_unit") <- spat_unit
+    # NULL: remove specified entry
+    if (is.null(x)) {
+        if (isTRUE(verbose)) {
+            wrap_msg("NULL passed to x.\n Removing specified metadata.")
         }
-        if (isTRUE(nospec_feat)) {
-            if (!is.na(slot(metadata, "feat_type"))) {
-                feat_type <- slot(metadata, "feat_type")
-            }
-        } else {
-            slot(metadata, "feat_type") <- feat_type
-        }
-        if (!is.null(provenance)) {
-            slot(metadata, "provenance") <- provenance
-        }
+        gobject@feat_metadata[[spat_unit]][[feat_type]] <- NULL
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
+    }
+
+    # Single featMetaObj — resolve nesting against subobject's own slots
+    if (isTRUE(nospec_unit)) {
+        if (!is.na(slot(x, "spat_unit"))) spat_unit <- slot(x, "spat_unit")
     } else {
-        # 4.2 if nested list structure, extract spat_unit/feat_type
-        if (inherits(metadata, "list")) {
-            featMetaObj_list <- readFeatMetadata(
-                data_list = metadata,
-                provenance = if (is.null(provenance)) spat_unit else provenance
-            )
-            # recursively run
-            for (obj_i in seq_along(featMetaObj_list)) {
-                # (provenance info set during prev. step)
-                gobject <- set_feature_metadata(gobject,
-                    metadata = featMetaObj_list[[obj_i]]
-                )
-            }
-            return(gobject)
-        }
-
-        # 4.3 otherwise assume data.frame type object
-
-        if (is.null(spat_unit) | is.null(feat_type)) {
-            stop(wrap_txt("Add expression or polygon info first. Alternatively,
-                        specify expected spat_unit and feat_type using
-                        activeSpatUnit() and activeFeatType()",
-                errWidth = TRUE
-            ))
-        }
-
-
-        metadata <- data.table::as.data.table(metadata)
-
-        # if feat ID col is missing, try to automatically set
-        if (is.null(metadata[["feat_ID"]])) {
-            id_error <- try(
-                metadata[, feat_ID := get_feat_id(gobject,
-                    feat_type = feat_type
-                )],
-                silent = TRUE
-            )
-            if (inherits(id_error, "try-error")) {
-                stop("cannot automatically set metadata feat_ID based on
-                    gobject feat_ID slot.")
-            }
-        } else if (feat_type %in% list_feat_id_names(gobject)) {
-            # if feat ID col is present in both, try to match
-            if (!identical(
-                metadata[, feat_ID],
-                get_feat_id(gobject, feat_type = feat_type)
-            )) {
-                stop('metadata feat_ID does not match that in gobject feat_ID
-                    slot for feat_type "', feat_type, '".\n')
-            }
-        }
-
-        # put feat_ID first
-        all_colnames <- colnames(metadata)
-        other_colnames <- grep("feat_ID", all_colnames,
-            invert = TRUE,
-            value = TRUE
-        )
-        metadata <- metadata[, c("feat_ID", other_colnames), with = FALSE]
-
-        metadata <- new("featMetaObj",
-            metaDT = metadata,
-            col_desc = NA_character_, # unknown
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            provenance = if (is.null(provenance)) spat_unit else provenance
-        )
+        slot(x, "spat_unit") <- spat_unit
+    }
+    if (isTRUE(nospec_feat)) {
+        if (!is.na(slot(x, "feat_type"))) feat_type <- slot(x, "feat_type")
+    } else {
+        slot(x, "feat_type") <- feat_type
+    }
+    if (!is.null(provenance)) {
+        slot(x, "provenance") <- provenance
     }
 
-    # 5. check if nesting address is already used - just feat_type for metadata
+    # Notify on replacement
     potential_names <- list_feat_metadata(
         gobject,
         spat_unit = spat_unit
@@ -1256,31 +889,51 @@ set_feature_metadata <- function(gobject,
         if (isTRUE(verbose)) {
             wrap_msg(
                 '> Feat metadata for spat_unit "', spat_unit,
-                '" and feat_type "',
-                feat_type,
+                '" and feat_type "', feat_type,
                 '" already exists and will be replaced with new metadata.'
             )
         }
     }
 
+    gobject@feat_metadata[[spat_unit]][[feat_type]] <- x
 
-    # 6. return object
-    gobject@feat_metadata[[spat_unit]][[feat_type]] <- metadata
-
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
             "Setting feature metadata [",
-            spatUnit(metadata), "][", featType(metadata), "] ",
+            spatUnit(x), "][", featType(x), "] ",
             sep = ""
         )
     }
 
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+#' Build an empty featMetaObj seeded with the gobject's feat_IDs.
+#' Used by initialize() and init_feat_metadata() to create placeholder
+#' metadata for a (spat_unit, feat_type) pair without touching slot
+#' contents directly.
+#' @noRd
+.create_init_feat_meta <- function(gobject, spat_unit, feat_type,
+        provenance = NULL) {
+    create_feat_meta_obj(
+        metaDT = data.table::data.table(
+            feat_ID = get_feat_id(gobject, feat_type = feat_type)
+        ),
+        col_desc = c(feat_ID = "feature-specific unique ID value"),
+        spat_unit = spat_unit,
+        feat_type = feat_type,
+        provenance = if (is.null(provenance)) spat_unit else provenance
+    )
+}
+
+
+
+
+
+
+
 
 
 ## expression values slot ####
@@ -4859,63 +4512,86 @@ setFeatureInfo <- function(gobject,
         stop(wrap_txt("x param (data to set) must be given"))
     }
 
-    # 1. Determine user inputs
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    .external_accessor_point <- list(nospec_feat = nospec_feat)
-    # checked by internal setter to determine if called by external
+    # `nospec_feat` is read from this frame by read_s4_nesting() to decide
+    # whether to overwrite the subobject's feat_type with the caller's value.
+    nospec_feat <- is.null(feat_type)
 
-
-    # Extra defaults: expression, feature_info, spat_info specific
-    default_feat <- if (is.null(gobject@expression_feat)) {
-        "rna"
-    } else {
-        gobject@expression_feat[[1L]]
+    # Validate input type
+    if (!inherits(x,
+            c("giottoPoints", "giottoBinPoints", "NULL", "list"))) {
+        stop(wrap_txt("Only giottoPoints or lists of giottoPoints accepted.
+            For raw or external data, please first use readFeatureInfo()"))
     }
 
-
-    # NATIVE INPUT TYPES
-    # 2. if input is giottoPoints or NULL, pass to internal
-    if (is.null(x) || inherits(x, c("giottoPoints", "giottoBinPoints"))) {
-        # pass to internal
-        gobject <- set_feature_info(
-            gobject = gobject,
-            gpoints = x,
-            feat_type = feat_type,
-            verbose = verbose,
-            set_defaults = FALSE,
-            initialize = initialize
-        )
-        return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x,
-                inherits, c("giottoPoints", "giottoBinPoints"),
-                FUN.VALUE = logical(1L)
+    # List input: validate items and iterate via self-recursion
+    if (inherits(x, "list")) {
+        if (!all(vapply(x,
+            inherits, c("giottoPoints", "giottoBinPoints"),
+            FUN.VALUE = logical(1L)
+        ))) {
+            stop(wrap_txt("Only giottoPoints or lists of giottoPoints
+                accepted. For raw or external data, please first use
+                readFeatureInfo()"))
+        }
+        for (obj_i in seq_along(x)) {
+            gobject <- setFeatureInfo(
+                gobject = gobject,
+                x = x[[obj_i]],
+                feat_type = feat_type,
+                verbose = verbose,
+                initialize = initialize
             )
-        )) {
-            # MULTIPLE INPUT
-            # 3. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
+        }
+        return(gobject)
+    }
 
-                gobject <- set_feature_info(
-                    gobject = gobject,
-                    gpoints = x[[obj_i]],
-                    feat_type = feat_type,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
+    # NULL: remove specified feat_info entry
+    if (is.null(x)) {
+        if (isTRUE(verbose)) {
+            wrap_msg("NULL passed to x. Removing specified feature
+                    information.")
+        }
+        gobject@feat_info[[feat_type]] <- NULL
+        if (length(gobject@feat_info) == 0L) gobject@feat_info <- NULL
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
+    }
+
+    # Single giottoPoints / giottoBinPoints
+    # read_s4_nesting() reads nospec_feat from this frame and writes feat_type
+    # back if it was unset, or updates the subobject's feat_type otherwise.
+    x <- read_s4_nesting(x)
+
+    # Drop empty gpoints (e.g. split_keyword with no matches). Avoids creating
+    # placeholder feat_info / feat_metadata entries that `initialize()` would
+    # otherwise propagate.
+    if (.gpoints_is_empty(x)) {
+        warning(wrap_txt(
+            "Skipping empty giottoPoints (0 features) for feat_type:",
+            feat_type
+        ), call. = FALSE)
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
+    }
+
+    # Notify on replacement
+    if (feat_type %in% names(gobject@feat_info)) {
+        if (isTRUE(verbose)) {
+            wrap_msg('> "', feat_type, '" already exists and will be
+                    replaced with new giotto points \n')
         }
     }
 
-    # catch
-    stop(wrap_txt("Only giottoPoints or lists of giottoPoints accepted.
-        For raw or external data, please first use readFeatureInfo()")
-    )
+    if (isTRUE(verbose)) {
+        wrap_msg(
+            "Setting feature info [", featType(x), "] ",
+            sep = ""
+        )
+    }
+
+    gobject@feat_info[[feat_type]] <- x
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
 
 
@@ -4936,205 +4612,6 @@ setFeatureInfo <- function(gobject,
     if (inherits(n, "try-error")) return(TRUE)
     is.na(n) || n == 0L
 }
-
-
-#' @title Set feature info
-#' @name set_feature_info
-#' @description Set giotto polygon spatVector for features
-#' @inheritParams data_access_params
-#' @param gpoints giotto points object
-#' @param gpolygon typo do not use
-#' @param verbose be verbose
-#' @returns giotto object
-#' @noRd
-set_feature_info <- function(gobject,
-    gpoints,
-    feat_type = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE,
-    gpolygon = NULL) {
-    assert_giotto(gobject)
-    if (!methods::hasArg(gpoints) & !methods::hasArg(gpolygon)) {
-        stop(wrap_txt("gpoints param must be given"))
-    }
-
-    if (!is.null(gpolygon)) { # deprecation
-        warning(wrap_txt("do not use gpolygon param. Use gpoints instead"))
-        if (is.null(gpoints)) gpoints <- gpolygon
-    }
-
-
-    # 0. stop if not native formats
-    if (inherits(gpoints, "list")) {
-        if (!all(
-            vapply(gpoints,
-                inherits, c("giottoPoints", "giottoBinPoints"),
-                FUN.VALUE = logical(1L)
-            )
-        )) {
-            stop(wrap_txt("If providing a list to internal setter, only lists
-                of", "giottoPoints objects are permitted",
-                errWidth = TRUE
-            ))
-        }
-    }
-    if (!inherits(gpoints,
-            c("giottoPoints", "giottoBinPoints", "NULL", "list"))
-    ) {
-        stop(wrap_txt(deparse(substitute(gpoints)), "is not giottoPoints (set),
-                list of giottoPoints (set), or NULL (remove)"))
-    }
-
-
-    # 1. determine user input
-    p <- parent.frame() # get values if called from external
-    call_from_external <- exists(".external_accessor_point", where = p)
-
-    if (isTRUE(call_from_external)) {
-        nospec_feat <- p$.external_accessor_point$nospec_feat
-    } else {
-        nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    }
-
-
-    # 2. set default feat_type
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-        feat_type <- set_default_feat_type(
-            gobject = gobject,
-            spat_unit = spat_unit,
-            feat_type = feat_type
-        )
-    }
-
-    # 3.1 if input is NULL, remove object
-    if (is.null(gpoints)) {
-        if (isTRUE(verbose)) {
-            wrap_msg("NULL passed to gpoints. Removing specified feature
-                    information.")
-        }
-        gobject@feat_info[[feat_type]] <- NULL
-
-        # prune if empty
-        if (length(gobject@feat_info) == 0L) {
-            gobject@feat_info <- NULL
-        }
-
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
-    }
-
-    # 3.2 if input is list, set list
-    if (inherits(gpoints, "list")) {
-        # ensure list names are accurate
-        gp_names <- names(gpoints)
-        if (is.null(gp_names)) {
-            stop(wrap_txt('If "gpoints" is a list, then it must be a named
-                        list',
-                errWidth = TRUE
-            ))
-        }
-        if (any(is.na(gp_names))) {
-            stop(wrap_txt('No NA values allowed in "gpoints" list names"'))
-        }
-        dup_bool <- duplicated(gp_names)
-        if (any(dup_bool)) {
-            stop(wrap_txt(
-                "Duplicated list names:", gp_names[dup_bool],
-                "\nAll gpoints list names must be unique"
-            ))
-        }
-        for (gp_name in gp_names) {
-            featType(gpoints[[gp_name]]) <- gp_name
-        }
-
-        # drop empty gpoints (e.g. split_keyword with no matches). Avoids
-        # creating placeholder feat_info / feat_metadata entries that
-        # `initialize()` would otherwise propagate and that downstream
-        # would need `sliceGiotto` to clean up.
-        empty_bool <- vapply(gpoints, .gpoints_is_empty,
-            FUN.VALUE = logical(1L))
-        if (any(empty_bool)) {
-            warning(wrap_txt(
-                "Skipping empty giottoPoints (0 features) for feat_type(s):",
-                paste(gp_names[empty_bool], collapse = ", ")
-            ), call. = FALSE)
-            gpoints <- gpoints[!empty_bool]
-            gp_names <- gp_names[!empty_bool]
-        }
-        if (length(gpoints) == 0L) {
-            if (isTRUE(initialize)) {
-                return(initialize(gobject))
-            } else {
-                return(gobject)
-            }
-        }
-
-        # replacements warning already given during extract points list
-        # (external setter) remove items to replace
-        for (gp_name in gp_names) {
-            gobject@feat_info[[gp_name]] <- gpoints[[gp_name]]
-        }
-
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
-    }
-
-
-    # 4. import data from S4 if available
-    # NOTE: modifies feat_type/gpoints
-    gpoints <- read_s4_nesting(gpoints)
-
-    # 4.1 drop empty gpoints (see list branch comment)
-    if (.gpoints_is_empty(gpoints)) {
-        warning(wrap_txt(
-            "Skipping empty giottoPoints (0 features) for feat_type:",
-            feat_type
-        ), call. = FALSE)
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
-    }
-
-
-    ## 5. check if specified name has already been used
-    potential_names <- names(gobject@feat_info)
-    if (feat_type %in% potential_names) {
-        if (isTRUE(verbose)) {
-            wrap_msg('> "', feat_type, '" already exists and will be
-                    replaced with new giotto points \n')
-        }
-    }
-
-    ## 6. update and return giotto object
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
-        wrap_msg(
-            "Setting feature info [", featType(gpoints), "] ",
-            sep = ""
-        )
-    }
-
-    gobject@feat_info[[feat_type]] <- gpoints
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
-}
-
-
 
 
 
