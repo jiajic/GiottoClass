@@ -329,6 +329,7 @@ updateGiottoObject <- function(gobject) {
 #' @exportClass giotto
 giotto <- setClass(
     "giotto",
+    contains = "gAny",
     slots = c(
         expression = "nullOrList",
         expression_feat = "nullOrChar",

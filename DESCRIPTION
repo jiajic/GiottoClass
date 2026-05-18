@@ -104,6 +104,7 @@ Collate:
     'flex_functions.R'
     'function_logging.R'
     'generate_poly.R'
+    'gmulti.R'
     'giotto_structures.R'
     'globals.R'
     'gstop.R'
