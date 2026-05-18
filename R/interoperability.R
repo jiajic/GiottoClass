@@ -614,12 +614,14 @@ anndataToGiotto <- function(anndata_path = NULL,
             }
             l_n_trim <- paste(strsplit(l_n, "_")[[1]][3], collapse = "_")
             layExprObj <- createExprObj(lay, name = l_n_trim)
-            gobject <- set_expression_values(
+            gobject <- setExpression(
                 gobject = gobject,
                 spat_unit = spat_unit,
                 feat_type = feat_type,
                 name = l_n_trim,
-                values = layExprObj
+                x = layExprObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
     }
@@ -2287,11 +2289,12 @@ seuratToGiottoV4 <- function(
             feat_type = "rna",
             provenance = "cell"
         )
-        gobject <- set_expression_values(
+        gobject <- setExpression(
             gobject = gobject,
-            values = exprObj, set_defaults = FALSE
+            x = exprObj,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        # gobject@expression$cell$rna$normalized = normexp
     }
     gobject <- addCellMetadata(gobject = gobject, new_metadata = cell_metadata)
     if (exists("gpoints") == TRUE) {
@@ -2481,10 +2484,11 @@ seuratToGiottoV5 <- function(
                 feat_type = "rna",
                 provenance = "cell"
             )
-            gobject <- set_expression_values(
+            gobject <- setExpression(
                 gobject = gobject,
-                values = exprObj, 
-                set_defaults = FALSE
+                x = exprObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
         
@@ -2496,10 +2500,11 @@ seuratToGiottoV5 <- function(
                 feat_type = "rna",
                 provenance = "cell"
             )
-            gobject <- set_expression_values(
+            gobject <- setExpression(
                 gobject = gobject,
-                values = exprObj, 
-                set_defaults = FALSE
+                x = exprObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
         
@@ -3163,9 +3168,11 @@ spatialExperimentToGiotto <- function(
                 name = exprMatsNames[i],
                 exprMat = exprMats[[i]]
             )
-            giottoObj <- set_expression_values(
+            giottoObj <- setExpression(
                 gobject = giottoObj,
-                values = exprObj
+                x = exprObj,
+                verbose = FALSE,
+                initialize = FALSE
             )
         }
     }
@@ -3763,11 +3770,13 @@ spatialdataToGiotto <- function(spatialdata_path = NULL,
                     name <- parts[3]
                 }
                 layExprObj <- createExprObj(lay, name = name)
-                gobject <- set_expression_values(
+                gobject <- setExpression(
                     gobject = gobject,
                     spat_unit = layer_su,
                     feat_type = layer_ft,
-                    values = layExprObj
+                    x = layExprObj,
+                    verbose = FALSE,
+                    initialize = FALSE
                 )
             }
         }

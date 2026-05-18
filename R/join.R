@@ -686,13 +686,12 @@ joinGiottoObjects <- function(gobject_list,
             ))
             expr_list[[1]][] <- combmat[["matrix"]]
 
-            ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-            comb_gobject <- set_expression_values(
+            comb_gobject <- setExpression(
                 gobject = comb_gobject,
-                values = expr_list[[1]],
-                set_defaults = FALSE
+                x = expr_list[[1]],
+                verbose = FALSE,
+                initialize = FALSE
             )
-            ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
             # Moved de novo feat metadata generation to end of fxn as a catch
         }

@@ -2393,9 +2393,9 @@ aggregateStacksExpression <- function(gobject,
         misc = NULL
     )
 
-    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-    gobject <- set_expression_values(gobject = gobject, values = new_expr_obj)
-    ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
+    gobject <- setExpression(
+        gobject = gobject, x = new_expr_obj, verbose = FALSE
+    )
 
     # set new cell IDs
     ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###

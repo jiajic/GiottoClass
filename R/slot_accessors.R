@@ -1209,146 +1209,47 @@ setExpression <- function(gobject,
         stop(wrap_txt("x param (data to set) must be given"))
     }
 
-    # 1. Determine user inputs
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    nospec_name <- ifelse(is.null(match.call()$name), yes = TRUE, no = FALSE)
-    .external_accessor_expr <- list(
-        nospec_unit = nospec_unit,
-        nospec_feat = nospec_feat,
-        nospec_name = nospec_name
-    )
-    # checked by internal setter to determine if called by external
+    # Validate input type
+    if (!inherits(x, c("exprObj", "NULL", "list"))) {
+        stop(wrap_txt("Only exprObj or lists of exprObj accepted.
+            For raw or external data, please first use readExprData()"))
+    }
 
-    # SINGLE INPUT
-    # 3. if input is exprObj or NULL, pass to internal
-    if (is.null(x) | inherits(x, "exprObj")) {
-        # pass to internal
-        gobject <- set_expression_values(
-            gobject = gobject,
-            values = x,
-            spat_unit = spat_unit,
-            feat_type = feat_type,
-            name = name,
-            provenance = provenance,
+    # `nospec_*` are read from this frame by read_s4_nesting() to decide
+    # whether to overwrite the subobject's nesting values with caller-supplied
+    # ones, or vice versa.
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
+    nospec_name <- is.null(match.call()$name)
+
+    # List input: validate items and iterate. Only forward nesting args that
+    # the caller actually supplied; otherwise the recursive call's match.call()
+    # would see name = "raw" (default) and clobber each subobj's own @name.
+    if (inherits(x, "list")) {
+        if (!all(vapply(x, inherits, "exprObj", FUN.VALUE = logical(1L)))) {
+            stop(wrap_txt("Only exprObj or lists of exprObj accepted.
+                For raw or external data, please first use readExprData()"))
+        }
+        base_args <- list(
             verbose = verbose,
-            set_defaults = FALSE,
             initialize = initialize
         )
+        if (!nospec_unit) base_args$spat_unit <- spat_unit
+        if (!nospec_feat) base_args$feat_type <- feat_type
+        if (!nospec_name) base_args$name <- name
+        if (!is.null(provenance)) base_args$provenance <- provenance
+        for (obj_i in seq_along(x)) {
+            gobject <- do.call(setExpression, c(
+                list(gobject = gobject, x = x[[obj_i]]),
+                base_args
+            ))
+        }
         return(gobject)
-    } else if (inherits(x, "list")) {
-        # check list items are native
-        if (all(
-            vapply(x, inherits, "exprObj", FUN.VALUE = logical(1L))
-        )) {
-            # MULTIPLE INPUT
-            # 4. iteratively set
-            for (obj_i in seq_along(x)) {
-                # if(isTRUE(verbose)) message('[', obj_i, ']')
-
-                gobject <- set_expression_values(
-                    gobject = gobject,
-                    values = x[[obj_i]],
-                    spat_unit = spat_unit,
-                    feat_type = feat_type,
-                    name = name,
-                    provenance = provenance,
-                    verbose = verbose,
-                    set_defaults = FALSE,
-                    initialize = initialize
-                )
-            }
-            return(gobject)
-        }
     }
 
-    # catch
-    stop(wrap_txt("Only exprObj or lists of exprObj accepted.
-                    For raw or external data, please first use readExprData()"))
-}
-
-
-
-
-
-
-
-
-
-#' @title Set expression values
-#' @name set_expression_values
-#' @description Function to set expression values for giotto object
-#' @inheritParams data_access_params
-#' @param name name for the expression slot
-#' @param provenance provenance information (optional)
-#' @param values exprObj If NULL, then the object will be removed.
-#' @param verbose be verbose
-#' @param initialize (default = FALSE) whether to initialize the gobject before
-#' returning. Will be set to TRUE when called by the external
-#' @keywords internal
-#' @returns giotto object
-#' @noRd
-set_expression_values <- function(gobject,
-    values,
-    spat_unit = NULL,
-    feat_type = NULL,
-    name = "test",
-    provenance = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    initialize = FALSE) {
-    assert_giotto(gobject)
-
-    if (!inherits(values, c("exprObj", "NULL"))) {
-        stop(wrap_txt(
-            deparse(substitute(values)),
-            "is not exprObj (set) or NULL (remove)"
-        ))
-    }
-
-    # 1. Determine user inputs
-    p <- parent.frame() # Get values if called from external
-    call_from_external <- exists(".external_accessor_expr", where = p)
-
-    if (call_from_external) {
-        nospec_unit <- p$.external_accessor_expr$nospec_unit
-        nospec_feat <- p$.external_accessor_expr$nospec_feat
-        nospec_name <- p$.external_accessor_expr$nospec_name
-    } else {
-        nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-        nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-        nospec_name <- ifelse(is.null(match.call()$name), yes = TRUE,
-            no = FALSE
-        )
-    }
-
-    if (inherits(values, "exprObj")) {
-        if (!is.na(spatUnit(values)) &
-            !is.na(featType(values)) &
-            isTRUE(nospec_unit) &
-            isTRUE(nospec_feat)) {
-            set_defaults <- FALSE
-        }
-    }
-
-
-    # 2. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-        feat_type <- set_default_feat_type(
-            gobject = gobject,
-            spat_unit = spat_unit,
-            feat_type = feat_type
-        )
-    }
-
-
-    # 3. if input is NULL, remove object (no initialize option)
-    if (is.null(values)) {
-        if (isTRUE(verbose)) wrap_msg("NULL passed to values param.
+    # NULL: remove specified entry
+    if (is.null(x)) {
+        if (isTRUE(verbose)) wrap_msg("NULL passed to x param.
                                 Removing specified expression")
         gobject@expression[[spat_unit]][[feat_type]][[name]] <- NULL
 
@@ -1363,19 +1264,32 @@ set_expression_values <- function(gobject,
             }
         }
 
-        if (isTRUE(initialize)) {
-            return(initialize(gobject))
-        } else {
-            return(gobject)
-        }
+        if (isTRUE(initialize)) return(initialize(gobject))
+        return(gobject)
     }
 
+    # Resolve defaults only when the subobject doesn't already carry them.
+    # If the exprObj has spat_unit/feat_type and the caller didn't override,
+    # read_s4_nesting() below will pick them up from the subobj — no need to
+    # consult the gobject's defaults.
+    if (!(!is.na(spatUnit(x)) & !is.na(featType(x)) &
+        isTRUE(nospec_unit) & isTRUE(nospec_feat))) {
+        spat_unit <- set_default_spat_unit(
+            gobject = gobject,
+            spat_unit = spat_unit
+        )
+        feat_type <- set_default_feat_type(
+            gobject = gobject,
+            spat_unit = spat_unit,
+            feat_type = feat_type
+        )
+    }
 
-    # 4 import data from S4 if available
-    # NOTE: modifies spat_unit/feat_type/name/provenance/data slots
-    values <- read_s4_nesting(values)
+    # NOTE: read_s4_nesting modifies spat_unit / feat_type / name / provenance
+    # in this frame based on the nospec_* flags.
+    x <- read_s4_nesting(x)
 
-    # 5. check if specified name has already been used
+    # Notify on replacement
     potential_names <- list_expression_names(gobject,
         spat_unit = spat_unit,
         feat_type = feat_type
@@ -1389,30 +1303,26 @@ set_expression_values <- function(gobject,
         }
     }
 
-    ## 6. update and return giotto object
-    if (isTRUE(verbose) & isTRUE(call_from_external)) {
+    if (isTRUE(verbose)) {
         wrap_msg(
-            "Setting expression [", spatUnit(values),
-            "][", featType(values), "] ",
-            objName(values),
+            "Setting expression [", spatUnit(x),
+            "][", featType(x), "] ",
+            objName(x),
             sep = ""
         )
     }
 
-    ## 7. Write matrix to h5_file if needed
+    # Write matrix to h5_file if the gobject is HDF5-backed
     if (!is.null(slot(gobject, "h5_file"))) {
-        expression_matrix <- slot(values, "exprMat")
+        expression_matrix <- slot(x, "exprMat")
 
         h5_file <- slot(gobject, "h5_file")
         internal_path <- paste0(feat_type, "_", name)
-        # internal_path_dimnames = paste0(internal_path,"_dimnames")
 
         if (file.exists(h5_file)) {
             list_names <- HDF5Array::h5ls(file = h5_file)
             while (internal_path %in% list_names[["name"]]) {
-                # rhdf5::h5delete(file = h5_file, name = internal_path)
                 internal_path <- paste0(internal_path, "_subset")
-                # internal_path_dimnames = paste0(internal_path,"_dimnames")
             }
         }
 
@@ -1436,17 +1346,22 @@ set_expression_values <- function(gobject,
             )
         }
 
-        slot(values, "exprMat") <- internal_path
+        slot(x, "exprMat") <- internal_path
     }
 
-    # Output
-    gobject@expression[[spat_unit]][[feat_type]][[name]] <- values
-    if (isTRUE(initialize)) {
-        return(initialize(gobject))
-    } else {
-        return(gobject)
-    }
+    gobject@expression[[spat_unit]][[feat_type]][[name]] <- x
+    if (isTRUE(initialize)) return(initialize(gobject))
+    gobject
 }
+
+
+
+
+
+
+
+
+
 
 
 

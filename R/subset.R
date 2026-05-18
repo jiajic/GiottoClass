@@ -111,13 +111,12 @@
             ])
         }
 
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
-        gobject <<- set_expression_values(
+        gobject <<- setExpression(
             gobject = gobject,
-            values = ex,
-            verbose = FALSE
+            x = ex,
+            verbose = FALSE,
+            initialize = FALSE
         )
-        ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
 
         return(NULL) # ignore this
     })
