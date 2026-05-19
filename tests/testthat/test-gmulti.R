@@ -207,3 +207,36 @@ test_that("setSpatialLocations on giottoMulti requires object= and routes", {
     out_a <- getSpatialLocations(mg2, object = "a")$a
     expect_identical(nrow(out_a[]), 5L)
 })
+
+
+# setGiotto dispatch on giottoMulti ####
+
+test_that("setGiotto on giottoMulti routes shared subobject to parent", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    # parent's shared expression slot starts empty
+    expect_null(mg@expression)
+
+    e <- getExpression(g1)
+    mg2 <- setGiotto(mg, e, verbose = FALSE)
+    expect_s4_class(mg2, "giottoMulti")
+    # shared slot now populated, child untouched
+    expect_false(is.null(mg2@expression))
+    e2 <- getExpression(mg2)
+    expect_s4_class(e2, "exprObj")
+    expect_identical(dim(e2[]), c(4L, 5L))
+})
+
+test_that("setGiotto on giottoMulti routes spatial subobject per-child", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    sl_a <- getSpatialLocations(g1)
+    # without object= the underlying setSpatialLocations errors
+    expect_error(setGiotto(mg, sl_a, verbose = FALSE), "must name the child")
+
+    mg2 <- setGiotto(mg, sl_a, object = "a", verbose = FALSE)
+    expect_s4_class(mg2, "giottoMulti")
+    expect_identical(nrow(getSpatialLocations(mg2, object = "a")$a[]), 5L)
+})
