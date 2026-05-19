@@ -1,42 +1,3 @@
-### ---------------------------------------------------------------- ###
-# Get and set functions to get and set values the giotto class slots   #
-#                                                                      #
-# Accessor functions are paired by internal and externals.             #
-# External functions call the internals to perform their work          #
-#                                                                      #
-# > externals responsibilities:                                        #
-#     - provide default spat_unit/feat_type                            #
-#                                                                      #
-#     [getters]                                                        #
-#        - provide subsetting by cell/feat ID                          #
-#     [setters]                                                        #
-#        - Parse input for nesting information (read fxns)             #
-#        - Ensure input and gobject compatibility                      #
-#                                                                      #
-# > internals responsibilities:                                        #
-#     - understand giotto nesting structure                            #
-#     - provide default spat_unit/feat_type                            #
-#        - (never when called by external)                             #
-#                                                                      #
-#     [getters]                                                        #
-#        - perform copy of objects if needed                           #
-#     [setters]                                                        #
-#        - read S4 metadata for nesting info                           #
-#        - provide 'initialize' options                                #
-#        - provide method to REMOVE info using NULL                    #
-#        - call initialize(giotto) if sensitive slot                   #
-#                                                                      #
-# > initialize generic responsibilities (see classes.R)                #
-#     [setters]                                                        #
-#        - Convert to correct type and formatting (eval fxns)          #
-### ---------------------------------------------------------------- ###
-
-
-
-
-
-## common in internal functions ####
-
 
 ## Slot Depth Information ####
 # Function to provide correct slot nesting depth definitions for easy testing
@@ -71,14 +32,6 @@ giotto_slot_depths <- function() {
         )
     )
 }
-
-
-
-
-
-
-
-
 
 
 
