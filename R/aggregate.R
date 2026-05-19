@@ -1195,7 +1195,7 @@ calculateOverlapPolygonImages <- function(gobject,
             )
         }
 
-        intensity_image <- get_giottoLargeImage(
+        intensity_image <- getGiottoImage(
             gobject = gobject,
             name = img_name
         )

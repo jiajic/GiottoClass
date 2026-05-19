@@ -933,7 +933,7 @@ showGiottoSpatGrids <- function(gobject,
         objPrints <- objRows <- list()
         for (obj_i in seq(nrow(available_data))) {
             # Get object
-            dataObj <- get_spatialGrid(
+            dataObj <- getSpatialGrid(
                 gobject = gobject,
                 spat_unit = available_data$spat_unit[[obj_i]],
                 name = available_data$name[[obj_i]],

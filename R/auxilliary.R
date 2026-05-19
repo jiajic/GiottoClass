@@ -1708,7 +1708,7 @@ createMetafeats <- function(gobject,
     avail_sg <- list_spatial_grids(gobject)
     if (!is.null(avail_sg)) {
         for (sg_i in seq(nrow(avail_sg))) {
-            sg <- get_spatialGrid(
+            sg <- getSpatialGrid(
                 gobject = gobject,
                 spat_unit = avail_sg[sg_i, spat_unit],
                 feat_type = avail_sg[sg_i, feat_type],
@@ -1717,7 +1717,7 @@ createMetafeats <- function(gobject,
             )
             if (!is.null(sg[])) {
                 sg[] <- data.table::setalloccol(sg[])
-                gobject <- set_spatialGrid(
+                gobject <- setSpatialGrid(
                     gobject = gobject,
                     spatial_grid = sg,
                     verbose = FALSE,

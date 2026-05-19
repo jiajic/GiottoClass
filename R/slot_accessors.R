@@ -2450,20 +2450,26 @@ setSpatialNetwork <- function(gobject,
 ## spatial grid slot ####
 
 #' @title Get spatial grid
-#' @name get_spatialGrid
+#' @name getSpatialGrid
 #' @description Function to get spatial grid
 #' @inheritParams data_access_params
 #' @param name name of spatial grid
 #' @param return_grid_Obj return grid object (default = FALSE)
 #' @returns spatialGridObj
-#' @noRd
-get_spatialGrid <- function(gobject,
+#' @family spatial grid data accessor functions
+#' @family functions to get data from giotto object
+#' @examples
+#' g <- GiottoData::loadGiottoMini("visium")
+#' g <- createSpatialGrid(g, sdimx_stepsize = 5, sdimy_stepsize = 5)
+#'
+#' getSpatialGrid(g)
+#' @export
+getSpatialGrid <- function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     name = NULL,
     return_grid_Obj = FALSE,
     set_defaults = TRUE) {
-    # Set feat_type and spat_unit
     if (isTRUE(set_defaults)) {
         .set_default_nesting(gobject, spat_unit, feat_type)
     }
@@ -2547,128 +2553,6 @@ get_spatialGrid <- function(gobject,
 
 
 
-#' @title Get spatial grid
-#' @name getSpatialGrid
-#' @description Function to get spatial grid
-#' @inheritParams data_access_params
-#' @param name name of spatial grid
-#' @param return_grid_Obj return grid object (default = FALSE)
-#' @returns spatialGridObj
-#' @family spatial grid data accessor functions
-#' @family functions to get data from giotto object
-#' @examples
-#' g <- GiottoData::loadGiottoMini("visium")
-#' g <- createSpatialGrid(g, sdimx_stepsize = 5, sdimy_stepsize = 5)
-#'
-#' getSpatialGrid(g)
-#' @export
-getSpatialGrid <- function(gobject,
-    spat_unit = NULL,
-    feat_type = NULL,
-    name = NULL,
-    return_grid_Obj = FALSE,
-    set_defaults = TRUE) {
-    # Pass to internal function
-    grid <- get_spatialGrid(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        feat_type = feat_type,
-        name = name,
-        return_grid_Obj = return_grid_Obj,
-        set_defaults = set_defaults
-    )
-
-    return(grid)
-}
-
-#' @title Set spatial grid
-#' @name set_spatialGrid
-#' @description Function to set a spatial grid
-#' @inheritParams data_access_params
-#' @param spatial_grid spatial grid object
-#' @param name name of spatial grid
-#' @param verbose be verbose
-#' @returns giotto object
-#' @noRd
-set_spatialGrid <- function(gobject,
-    spatial_grid,
-    spat_unit = NULL,
-    feat_type = NULL,
-    name = NULL,
-    verbose = TRUE,
-    set_defaults = TRUE) {
-    # 1. check input
-    nospec_unit <- ifelse(is.null(spat_unit), yes = TRUE, no = FALSE)
-    nospec_feat <- ifelse(is.null(feat_type), yes = TRUE, no = FALSE)
-    nospec_name <- ifelse(is.null(name), yes = TRUE, no = FALSE)
-
-    # 2. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        .set_default_nesting(gobject, spat_unit, feat_type)
-    }
-
-    # 3. if input is null, remove object
-    if (is.null(spatial_grid)) {
-        if (isTRUE(verbose)) {
-            message("NULL passed to metadata.\n Removing specified metadata.")
-        }
-        gobject@spatial_grid[[spat_unit]][[feat_type]][[name]] <- NULL
-    }
-
-    # 4. import information from S4 if possible
-    if (inherits(spatial_grid, "spatialGridObj")) {
-        spatial_grid <- read_s4_nesting(spatial_grid)
-
-        # if(isTRUE(nospec_unit)) {
-        #   if(!is.na(slot(spatial_grid, 'spat_unit')))
-        #   spat_unit = slot(spatial_grid, 'spat_unit')
-        #   else slot(spatial_grid, 'spat_unit') = spat_unit
-        # } else {
-        #   slot(spatial_grid, 'spat_unit') = spat_unit
-        # }
-        # if(isTRUE(nospec_feat)) {
-        #   if(!is.na(slot(spatial_grid, 'feat_type')))
-        #   feat_type = slot(spatial_grid, 'feat_type')
-        #   else slot(spatial_grid, 'feat_type') = feat_type
-        # } else {
-        #   slot(spatial_grid, 'feat_type') = feat_type
-        # }
-        # if(isTRUE(nospec_name)) {
-        #   if(!is.na(slot(spatial_grid, 'name')))
-        #   name = slot(spatial_grid, 'name')
-        #   else slot(spatial_grid, 'name') = name
-        # } else {
-        #   slot(spatial_grid, 'name') = name
-        # }
-    } else {
-        stop("spatial_grid must be a spatialGridObj")
-    }
-
-    ## 5. check if specified name has already been used
-    if (isTRUE(verbose)) {
-        potential_names <- names(slot(gobject, "spatial_grid")[[spat_unit]][[feat_type]])
-        if (name %in% potential_names) {
-            wrap_msg(
-                '> "', name,
-                '" already exists and will be replaced with new spatial grid \n'
-            )
-        }
-    }
-
-
-    ## TODO: 2. check input for spatial grid
-    if (!inherits(spatial_grid, "spatialGridObj")) {
-        stop('spatial_grid to set must be S4 "spatialGridObj"\n')
-    }
-    silent <- validObject(spatial_grid) # Variable only used to hide TRUE prints
-
-    ## 6. update and return giotto object
-    slot(gobject, "spatial_grid")[[spat_unit]][[feat_type]][[name]] <-
-        spatial_grid
-
-    return(gobject)
-}
-
 #' @title Set spatial grid
 #' @name setSpatialGrid
 #' @description Function to set a spatial grid
@@ -2694,18 +2578,42 @@ setSpatialGrid <- function(gobject,
     verbose = TRUE,
     set_defaults = TRUE,
     ...) {
-    # Pass to internal function
-    gobject <- set_spatialGrid(
-        gobject = gobject,
-        spatial_grid = spatial_grid,
-        spat_unit = spat_unit,
-        feat_type = feat_type,
-        name = name,
-        verbose = verbose,
-        set_defaults = set_defaults
-    )
+    if (isTRUE(set_defaults)) {
+        .set_default_nesting(gobject, spat_unit, feat_type)
+    }
 
-    return(gobject)
+    if (is.null(spatial_grid)) {
+        if (isTRUE(verbose)) {
+            message("NULL passed to spatial_grid.\n Removing specified entry.")
+        }
+        gobject@spatial_grid[[spat_unit]][[feat_type]][[name]] <- NULL
+        return(gobject)
+    }
+
+    if (!inherits(spatial_grid, "spatialGridObj")) {
+        stop("spatial_grid must be a spatialGridObj")
+    }
+
+    spatial_grid <- read_s4_nesting(spatial_grid)
+
+    if (isTRUE(verbose)) {
+        potential_names <- names(
+            slot(gobject, "spatial_grid")[[spat_unit]][[feat_type]]
+        )
+        if (name %in% potential_names) {
+            wrap_msg(
+                '> "', name,
+                '" already exists and will be replaced with new spatial grid \n'
+            )
+        }
+    }
+
+    silent <- validObject(spatial_grid) # hide TRUE print
+
+    slot(gobject, "spatial_grid")[[spat_unit]][[feat_type]][[name]] <-
+        spatial_grid
+
+    gobject
 }
 
 ## polygon cell info ####
@@ -3425,95 +3333,10 @@ setSpatialEnrichment <- function(gobject,
 
 
 
-## MG image slot ####
-
-#' @title Get \emph{magick}-based giotto \code{image}
-#' @name get_giottoImage_MG
-#' @description Get a giottoImage from a giotto object
-#' @param gobject giotto object
-#' @param name name of giottoImage \code{\link{showGiottoImageNames}}
-#' @returns a giottoImage
-#' @keywords internal
-#' @noRd
-get_giottoImage_MG <- function(gobject,
-    name = NULL) {
-    g_image_names <- list_images(gobject, img_type = "image")
-    if (is.null(g_image_names)) stop("No giottoImages have been found \n")
-
-    if (is.null(name)) {
-        name <- g_image_names$name[1L]
-    }
-
-    if (!name %in% g_image_names$name) {
-        stop(
-            name, " was not found among the image names.
-            See showGiottoImageNames()\n",
-            call. = FALSE
-        )
-    }
-
-    img <- gobject@images[[name]]
-    return(img)
-}
-
-
-
-## large image slot ####
-
-
-
-#' @title Get \emph{terra}-based giotto \code{largeImage}
-#' @name get_giottoLargeImage
-#' @description Set a giottoLargeImage from a giottoObject
-#' @param gobject giotto object
-#' @param name name of giottoLargeImage \code{\link{showGiottoImageNames}}
-#' @returns a giottoLargeImage
-#' @keywords internal
-#' @noRd
-get_giottoLargeImage <- function(gobject,
-    name = NULL) {
-    g_image_names <- list_images(gobject, img_type = "largeImage")
-    if (is.null(g_image_names)) {
-        stop("No giottoLargeImages have been found \n")
-    }
-
-    if (is.null(name)) {
-        name <- g_image_names$name[1L]
-    }
-
-    if (!name %in% g_image_names$name) {
-        stop(name, " was not found among the largeImage names.
-            See showGiottoImageNames() \n")
-    }
-
-    img <- gobject@images[[name]]
-    return(img)
-}
-
-
-
-
 
 
 ## all image slots ####
 
-
-# TODO remove in future
-#' @title Get giotto image object
-#' @name get_giottoImage
-#' @description Get giotto image object from gobject
-#' @param gobject giotto object
-#' @param image_type deprecated
-#' @param name name of a giotto image object \code{\link{showGiottoImageNames}}
-#' @returns a giotto image object
-#' @noRd
-get_giottoImage <- function(gobject = NULL,
-    image_type = NULL,
-    name = NULL) {
-    gimg <- getGiottoImage(gobject = gobject, name = name)
-
-    return(gimg)
-}
 
 #' @title Get giotto image object
 #' @name getGiottoImage
@@ -3578,36 +3401,6 @@ getGiottoImage <- function(gobject,
 
 
 
-# TODO remove in the future
-#' @title Set giotto image object
-#' @name set_giottoImage
-#' @description Directly attach a giotto image to giotto object
-#' @details \emph{\strong{Use with care!}} This function directly attaches
-#' giotto image objects to the gobject without further modifications of
-#' spatial positioning values within the image object that are generally
-#' needed in order for them to plot in the correct location relative to the
-#' other modalities of spatial data. \cr For the more general-purpose method
-#' of attaching image objects, see \code{\link{addGiottoImage}}
-#' @param gobject giotto object
-#' @param image giotto image object to be attached without modification to the
-#'  giotto object
-#' @param image_type deprecated
-#' @param name name of giotto image object
-#' @param verbose be verbose
-#' @returns giotto object
-#' @noRd
-set_giottoImage <- function(gobject = NULL,
-    image = NULL,
-    image_type = NULL,
-    name = NULL,
-    verbose = TRUE) {
-    setGiottoImage(
-        gobject = gobject,
-        image = image,
-        name = name,
-        verbose = verbose
-    )
-}
 
 #' @title Set giotto image object
 #' @name setGiottoImage

@@ -2285,7 +2285,7 @@ createSpatialDefaultGrid <- function(gobject,
         )
 
         # 3. assign spatial grid object
-        gobject <- set_spatialGrid(
+        gobject <- setSpatialGrid(
             gobject = gobject,
             spat_unit = spat_unit,
             feat_type = feat_type,
@@ -2539,7 +2539,7 @@ annotateSpatialGrid <- function(gobject,
     spatial_grid_name = "spatial_grid",
     cluster_columns = NULL) {
     # get grid
-    spatial_grid <- get_spatialGrid(
+    spatial_grid <- getSpatialGrid(
         gobject = gobject,
         spat_unit = spat_unit,
         feat_type = feat_type,

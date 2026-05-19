@@ -556,7 +556,7 @@ createGiottoObject <- function(expression,
                         # TODO Assign grid as the first spat_unit and feat_type.
                         # Assigment process will need to be improved later
                         avail_spat_feats <- list_expression(gobject)
-                        gobject <- set_spatialGrid(
+                        gobject <- setSpatialGrid(
                             gobject = gobject,
                             spat_unit = avail_spat_feats$spat_unit[[1]],
                             feat_type = avail_spat_feats$feat_type[[1]],
