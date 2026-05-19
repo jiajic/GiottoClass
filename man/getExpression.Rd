@@ -3,9 +3,12 @@
 \name{getExpression}
 \alias{getExpression}
 \alias{getExpressionValues}
+\alias{getExpression,gAny-method}
 \title{Get expression values}
 \usage{
-getExpression(
+getExpression(gobject, ...)
+
+\S4method{getExpression}{gAny}(
   gobject,
   values = NULL,
   spat_unit = NULL,
@@ -16,6 +19,8 @@ getExpression(
 }
 \arguments{
 \item{gobject}{giotto object}
+
+\item{...}{additional params to pass}
 
 \item{values}{expression values to
 extract (e.g. "raw", "normalized", "scaled")}
@@ -48,18 +53,12 @@ Other expression accessor functions:
 \code{\link{setExpression}()}
 
 Other functions to get data from giotto object: 
-\code{\link{getCellMetadata}()},
-\code{\link{getDimReduction}()},
 \code{\link{getFeatureInfo}()},
 \code{\link{getFeatureMetadata}()},
 \code{\link{getGiottoImage}()},
 \code{\link{getMultiomics}()},
-\code{\link{getNearestNetwork}()},
-\code{\link{getPolygonInfo}()},
-\code{\link{getSpatialEnrichment}()},
 \code{\link{getSpatialGrid}()},
 \code{\link{getSpatialLocations}()},
-\code{\link{getSpatialNetwork}()},
 \code{\link{get_multiomics}()}
 }
 \concept{expression accessor functions}

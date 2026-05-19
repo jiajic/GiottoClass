@@ -2,9 +2,12 @@
 % Please edit documentation in R/slot_accessors.R
 \name{setNearestNetwork}
 \alias{setNearestNetwork}
+\alias{setNearestNetwork,gAny-method}
 \title{Set nearest neighbor network}
 \usage{
-setNearestNetwork(
+setNearestNetwork(gobject, ...)
+
+\S4method{setNearestNetwork}{gAny}(
   gobject,
   x,
   spat_unit = NULL,
@@ -19,6 +22,8 @@ setNearestNetwork(
 }
 \arguments{
 \item{gobject}{giotto object}
+
+\item{...}{additional params to pass}
 
 \item{x}{nnNetObj or list of nnNetObj. Passing NULL will remove a specified
 set of nearest neighbor network information from the gobject}
@@ -38,8 +43,6 @@ yet supported.}
 
 \item{initialize}{(default = FALSE) whether to initialize the gobject before
 returning}
-
-\item{...}{additional params to pass}
 }
 \value{
 giotto object
@@ -54,9 +57,6 @@ dimred <- getNearestNetwork(gobject = g)
 setNearestNetwork(gobject = g, x = dimred)
 }
 \seealso{
-Other expression space nearest network accessor functions: 
-\code{\link{getNearestNetwork}()}
-
 Other functions to set data in giotto object: 
 \code{\link{setCellMetadata}()},
 \code{\link{setDimReduction}()},

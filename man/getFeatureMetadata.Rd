@@ -2,9 +2,12 @@
 % Please edit documentation in R/slot_accessors.R
 \name{getFeatureMetadata}
 \alias{getFeatureMetadata}
+\alias{getFeatureMetadata,gAny-method}
 \title{getFeatureMetadata}
 \usage{
-getFeatureMetadata(
+getFeatureMetadata(gobject, ...)
+
+\S4method{getFeatureMetadata}{gAny}(
   gobject,
   spat_unit = NULL,
   feat_type = NULL,
@@ -15,6 +18,8 @@ getFeatureMetadata(
 }
 \arguments{
 \item{gobject}{giotto object}
+
+\item{...}{additional params to pass}
 
 \item{spat_unit}{spatial unit (e.g. "cell")}
 
@@ -43,18 +48,12 @@ getFeatureMetadata(g)
 fDataDT
 
 Other functions to get data from giotto object: 
-\code{\link{getCellMetadata}()},
-\code{\link{getDimReduction}()},
 \code{\link{getExpression}()},
 \code{\link{getFeatureInfo}()},
 \code{\link{getGiottoImage}()},
 \code{\link{getMultiomics}()},
-\code{\link{getNearestNetwork}()},
-\code{\link{getPolygonInfo}()},
-\code{\link{getSpatialEnrichment}()},
 \code{\link{getSpatialGrid}()},
 \code{\link{getSpatialLocations}()},
-\code{\link{getSpatialNetwork}()},
 \code{\link{get_multiomics}()}
 }
 \concept{functions to get data from giotto object}

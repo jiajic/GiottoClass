@@ -2,10 +2,13 @@
 % Please edit documentation in R/slot_accessors.R
 \name{getMultiomics}
 \alias{getMultiomics}
+\alias{getMultiomics,gAny-method}
 \title{Get multiomics integration results}
 \usage{
-getMultiomics(
-  gobject = NULL,
+getMultiomics(gobject, ...)
+
+\S4method{getMultiomics}{gAny}(
+  gobject,
   spat_unit = NULL,
   feat_type = NULL,
   integration_method = "WNN",
@@ -45,18 +48,12 @@ Other multiomics accessor functions:
 \code{\link{set_multiomics}()}
 
 Other functions to get data from giotto object: 
-\code{\link{getCellMetadata}()},
-\code{\link{getDimReduction}()},
 \code{\link{getExpression}()},
 \code{\link{getFeatureInfo}()},
 \code{\link{getFeatureMetadata}()},
 \code{\link{getGiottoImage}()},
-\code{\link{getNearestNetwork}()},
-\code{\link{getPolygonInfo}()},
-\code{\link{getSpatialEnrichment}()},
 \code{\link{getSpatialGrid}()},
 \code{\link{getSpatialLocations}()},
-\code{\link{getSpatialNetwork}()},
 \code{\link{get_multiomics}()}
 }
 \concept{functions to get data from giotto object}
