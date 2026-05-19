@@ -455,37 +455,144 @@ setMethod(
 )
 
 
-# DISPATCH PATTERN — EXAMPLES (not yet exhaustive) ####
+# SPATIAL-DOMAIN METHODS — per-child dispatch ####
 #
-# Two representative methods. The point is the shape, not coverage —
-# we add more incrementally as needs arise.
+# Getters: `object = NULL` (default) routes to the active children and
+# returns a named list of per-child results. Pass a character vector of
+# names to override.
+#
+# Setters: `object` must name exactly one child. Setting "broadcast"
+# semantics across children would silently duplicate spatial data and
+# is almost never what the caller means; require an explicit target.
 
-# --- shared-domain example -------------------------------------------------
-# `getExpression` reads from @expression on either class. Promote to gAny so
-# one definition serves both. Existing `setMethod("getExpression", "giotto", ...)`
-# in slot_accessors.R should be migrated when we're confident the change
-# doesn't break anything spatial-aware inside that method.
-#
-# (NOT activating here — placeholder showing the pattern.)
-#
-# setMethod("getExpression", "gAny", function(gobject, ...) {
-#     # implementation identical to the current "giotto" version
-# })
+#' @noRd
+.gm_set_target <- function(gobject, object) {
+    if (missing(object) || is.null(object)) {
+        stop("`object` must name the child to write into", call. = FALSE)
+    }
+    if (length(object) != 1L) {
+        stop("`object` must be length 1 for setters on a giottoMulti",
+            call. = FALSE)
+    }
+    .gm_resolve_active(gobject, object)
+}
 
+#' @rdname getSpatialLocations
+#' @export
+setMethod("getSpatialLocations", signature("giottoMulti"),
+    function(gobject, object = NULL, ...) {
+        objs <- .gm_resolve_active(gobject, object)
+        out <- lapply(objs, function(nm) {
+            getSpatialLocations(gobject@objects[[nm]], ...)
+        })
+        names(out) <- objs
+        out
+    }
+)
 
-# --- per-object example ----------------------------------------------------
-# Spatial-domain accessors return per-child lists rather than try to combine.
-# Caller picks which child to act on via `object =`, or operates on all
-# active children.
-#
-# (Stub — wire up once we settle the per-child API ergonomics.)
-#
-# setMethod("getSpatialLocations", "giottoMulti",
-#     function(gobject, object = NULL, ...) {
-#         objs <- .gm_resolve_active(gobject, object)
-#         out <- lapply(objs, function(nm) {
-#             getSpatialLocations(gobject[[nm]], ...)
-#         })
-#         names(out) <- objs
-#         out
-#     })
+#' @rdname setSpatialLocations
+#' @export
+setMethod("setSpatialLocations", signature("giottoMulti"),
+    function(gobject, x, object = NULL, ...) {
+        nm <- .gm_set_target(gobject, object)
+        gobject@objects[[nm]] <- setSpatialLocations(
+            gobject@objects[[nm]], x = x, ...)
+        gobject
+    }
+)
+
+#' @rdname getSpatialNetwork
+#' @export
+setMethod("getSpatialNetwork", signature("giottoMulti"),
+    function(gobject, object = NULL, ...) {
+        objs <- .gm_resolve_active(gobject, object)
+        out <- lapply(objs, function(nm) {
+            getSpatialNetwork(gobject@objects[[nm]], ...)
+        })
+        names(out) <- objs
+        out
+    }
+)
+
+#' @rdname setSpatialNetwork
+#' @export
+setMethod("setSpatialNetwork", signature("giottoMulti"),
+    function(gobject, x, object = NULL, ...) {
+        nm <- .gm_set_target(gobject, object)
+        gobject@objects[[nm]] <- setSpatialNetwork(
+            gobject@objects[[nm]], x = x, ...)
+        gobject
+    }
+)
+
+#' @rdname getPolygonInfo
+#' @export
+setMethod("getPolygonInfo", signature("giottoMulti"),
+    function(gobject, object = NULL, ...) {
+        objs <- .gm_resolve_active(gobject, object)
+        out <- lapply(objs, function(nm) {
+            getPolygonInfo(gobject@objects[[nm]], ...)
+        })
+        names(out) <- objs
+        out
+    }
+)
+
+#' @rdname setPolygonInfo
+#' @export
+setMethod("setPolygonInfo", signature("giottoMulti"),
+    function(gobject, x, object = NULL, ...) {
+        nm <- .gm_set_target(gobject, object)
+        gobject@objects[[nm]] <- setPolygonInfo(
+            gobject@objects[[nm]], x = x, ...)
+        gobject
+    }
+)
+
+#' @rdname getFeatureInfo
+#' @export
+setMethod("getFeatureInfo", signature("giottoMulti"),
+    function(gobject, object = NULL, ...) {
+        objs <- .gm_resolve_active(gobject, object)
+        out <- lapply(objs, function(nm) {
+            getFeatureInfo(gobject@objects[[nm]], ...)
+        })
+        names(out) <- objs
+        out
+    }
+)
+
+#' @rdname setFeatureInfo
+#' @export
+setMethod("setFeatureInfo", signature("giottoMulti"),
+    function(gobject, x, object = NULL, ...) {
+        nm <- .gm_set_target(gobject, object)
+        gobject@objects[[nm]] <- setFeatureInfo(
+            gobject@objects[[nm]], x = x, ...)
+        gobject
+    }
+)
+
+#' @rdname getGiottoImage
+#' @export
+setMethod("getGiottoImage", signature("giottoMulti"),
+    function(gobject, object = NULL, ...) {
+        objs <- .gm_resolve_active(gobject, object)
+        out <- lapply(objs, function(nm) {
+            getGiottoImage(gobject@objects[[nm]], ...)
+        })
+        names(out) <- objs
+        out
+    }
+)
+
+#' @rdname setGiottoImage
+#' @export
+setMethod("setGiottoImage", signature("giottoMulti"),
+    function(gobject, image, object = NULL, ...) {
+        nm <- .gm_set_target(gobject, object)
+        gobject@objects[[nm]] <- setGiottoImage(
+            gobject@objects[[nm]], image = image, ...)
+        gobject
+    }
+)

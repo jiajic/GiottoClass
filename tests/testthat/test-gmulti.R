@@ -156,3 +156,54 @@ test_that("getCellMetadata on giottoMulti reads from parent's shared slot", {
     expect_s4_class(cm, "cellMetaObj")
     expect_identical(nrow(cm[]), 5L)
 })
+
+
+# Spatial-domain accessors — per-child dispatch on giottoMulti ####
+
+test_that("getSpatialLocations on giottoMulti returns named per-child list", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    out <- getSpatialLocations(mg)
+    expect_type(out, "list")
+    expect_identical(names(out), c("a", "b"))
+    expect_s4_class(out$a, "spatLocsObj")
+    expect_s4_class(out$b, "spatLocsObj")
+    expect_identical(nrow(out$a[]), 5L)
+    expect_identical(nrow(out$b[]), 3L)
+})
+
+test_that("getSpatialLocations honors object= to subset children", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    out <- getSpatialLocations(mg, object = "b")
+    expect_identical(names(out), "b")
+    expect_identical(nrow(out$b[]), 3L)
+})
+
+test_that("setSpatialLocations on giottoMulti requires object= and routes", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    sl_b <- getSpatialLocations(g2)
+
+    # missing object should error
+    expect_error(setSpatialLocations(mg, x = sl_b),
+        "must name the child")
+
+    # length > 1 should error
+    expect_error(
+        setSpatialLocations(mg, x = sl_b, object = c("a", "b")),
+        "length 1"
+    )
+
+    # round-trip: writing back the child's own spatlocs returns a giottoMulti
+    sl_a <- getSpatialLocations(g1)
+    mg2 <- setSpatialLocations(mg, x = sl_a, object = "a", verbose = FALSE)
+    expect_s4_class(mg2, "giottoMulti")
+    out_a <- getSpatialLocations(mg2, object = "a")$a
+    expect_identical(nrow(out_a[]), 5L)
+})
