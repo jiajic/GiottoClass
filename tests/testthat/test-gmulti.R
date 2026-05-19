@@ -227,6 +227,19 @@ test_that("setGiotto on giottoMulti routes shared subobject to parent", {
     expect_identical(dim(e2[]), c(4L, 5L))
 })
 
+test_that("set_default_spat_unit/feat_type fall back to @access on giottoMulti", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    # parent slots are empty; defaults should come from the @access cache
+    # populated by the constructor (per-child defaults).
+    expect_null(mg@expression)
+
+    su <- set_default_spat_unit(mg)
+    ft <- set_default_feat_type(mg, spat_unit = su)
+    expect_identical(su, mg@access$spat_unit[[1L]])
+    expect_identical(ft, mg@access$feat_type[[1L]])
+})
+
 test_that("setGiotto on giottoMulti routes spatial subobject per-child", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
