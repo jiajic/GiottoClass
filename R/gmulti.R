@@ -465,6 +465,85 @@ setMethod("show", "giottoMulti", function(object) {
     x
 }
 
+#' Apply the giottoMulti id_map view to a single child's subobject.
+#'
+#' Per-child shared-domain getters (getSpatialLocations, getPolygonInfo, ...)
+#' return data from one child at a time. The child's slots are keyed on
+#' LOCAL ids — `c1`, `c2`, ... — not globals. So this filter reads the
+#' surviving locals out of `@id_map$cells` (for the given child) and applies
+#' them to the subobject's cell-indexed axis. Feature filtering uses
+#' `@id_map$feats` similarly.
+#'
+#' Subobject axes:
+#' * `spatLocsObj`        cells = `cell_ID` column of `@coordinates`
+#' * `spatialNetworkObj`  cells = `from` + `to` columns; keep edge only if BOTH endpoints survive
+#' * `giottoPolygon`      cells = `poly_ID` attribute of the SpatVector
+#' * `giottoPoints` / `giottoBinPoints`  feats = `feat_ID` attribute
+#' * `giottoImage` / `giottoLargeImage` / `giottoAffineImage`: pass-through (no cell/feat axis)
+#'
+#' Lists are mapped element-wise (the underlying getters can return either a
+#' single subobject or a list when `:all:` or multi-name queries fire).
+#' @noRd
+.gm_apply_child_view <- function(x, gobject, object_name) {
+    if (!inherits(gobject, "giottoMulti")) return(x)
+    if (inherits(x, "list")) {
+        return(lapply(x, .gm_apply_child_view, gobject, object_name))
+    }
+    if (is.null(x)) return(x)
+
+    cell_map <- gobject@id_map$cells
+    feat_map <- gobject@id_map$feats
+    obj_col <- NULL  # data.table NSE (these are column refs below)
+
+    cell_locals <- if (!is.null(cell_map)) {
+        cell_map$local_id[cell_map$object == object_name]
+    } else {
+        NULL
+    }
+    feat_locals <- if (!is.null(feat_map)) {
+        feat_map$local_id[feat_map$object == object_name]
+    } else {
+        NULL
+    }
+
+    if (inherits(x, "spatLocsObj") && !is.null(cell_locals)) {
+        cell_ID <- NULL  # data.table NSE
+        dt <- x[]
+        x[] <- dt[cell_ID %in% cell_locals]
+        return(x)
+    }
+
+    if (inherits(x, "spatialNetworkObj") && !is.null(cell_locals)) {
+        from <- to <- NULL  # data.table NSE
+        dt <- x[]
+        x[] <- dt[from %in% cell_locals & to %in% cell_locals]
+        # the pre-filter cache is now stale; clear it so downstream code
+        # doesn't read the unfiltered edges by mistake
+        if (.hasSlot(x, "networkDT_before_filter")) {
+            x@networkDT_before_filter <- NULL
+        }
+        return(x)
+    }
+
+    if (inherits(x, "giottoPolygon") && !is.null(cell_locals)) {
+        sv <- x[]
+        keep <- terra::values(sv)[["poly_ID"]] %in% cell_locals
+        x[] <- sv[keep, ]
+        return(x)
+    }
+
+    if (inherits(x, c("giottoPoints", "giottoBinPoints")) &&
+            !is.null(feat_locals)) {
+        sv <- x[]
+        keep <- terra::values(sv)[["feat_ID"]] %in% feat_locals
+        x[] <- sv[keep, ]
+        return(x)
+    }
+
+    # giottoImage / giottoLargeImage / giottoAffineImage: no cell/feat axis
+    x
+}
+
 #' Compute a cheap length-signature of each child's ID slots.
 #'
 #' Used by `initialize(giottoMulti)` as a fast-path: if signatures match the
@@ -660,10 +739,12 @@ setMethod(
 #' @rdname getSpatialLocations
 #' @export
 setMethod("getSpatialLocations", signature("giottoMulti"),
-    function(gobject, object = NULL, ...) {
+    function(gobject, object = NULL, unfiltered = FALSE, ...) {
         objs <- .gm_resolve_active(gobject, object)
         out <- lapply(objs, function(nm) {
-            getSpatialLocations(gobject@objects[[nm]], ...)
+            sl <- getSpatialLocations(gobject@objects[[nm]], ...)
+            if (isTRUE(unfiltered)) sl
+            else .gm_apply_child_view(sl, gobject, nm)
         })
         names(out) <- objs
         out
@@ -684,10 +765,12 @@ setMethod("setSpatialLocations", signature("giottoMulti"),
 #' @rdname getSpatialNetwork
 #' @export
 setMethod("getSpatialNetwork", signature("giottoMulti"),
-    function(gobject, object = NULL, ...) {
+    function(gobject, object = NULL, unfiltered = FALSE, ...) {
         objs <- .gm_resolve_active(gobject, object)
         out <- lapply(objs, function(nm) {
-            getSpatialNetwork(gobject@objects[[nm]], ...)
+            sn <- getSpatialNetwork(gobject@objects[[nm]], ...)
+            if (isTRUE(unfiltered)) sn
+            else .gm_apply_child_view(sn, gobject, nm)
         })
         names(out) <- objs
         out
@@ -708,10 +791,17 @@ setMethod("setSpatialNetwork", signature("giottoMulti"),
 #' @rdname getPolygonInfo
 #' @export
 setMethod("getPolygonInfo", signature("giottoMulti"),
-    function(gobject, object = NULL, ...) {
+    function(gobject, object = NULL, unfiltered = FALSE, ...) {
         objs <- .gm_resolve_active(gobject, object)
         out <- lapply(objs, function(nm) {
-            getPolygonInfo(gobject@objects[[nm]], ...)
+            # request the giottoPolygon (not the SpatVector) so the filter
+            # has poly_ID attached and can apply by name
+            args <- list(...)
+            args$return_giottoPolygon <- TRUE
+            gp <- do.call(getPolygonInfo,
+                c(list(gobject = gobject@objects[[nm]]), args))
+            if (isTRUE(unfiltered)) gp
+            else .gm_apply_child_view(gp, gobject, nm)
         })
         names(out) <- objs
         out
@@ -732,10 +822,17 @@ setMethod("setPolygonInfo", signature("giottoMulti"),
 #' @rdname getFeatureInfo
 #' @export
 setMethod("getFeatureInfo", signature("giottoMulti"),
-    function(gobject, object = NULL, ...) {
+    function(gobject, object = NULL, unfiltered = FALSE, ...) {
         objs <- .gm_resolve_active(gobject, object)
         out <- lapply(objs, function(nm) {
-            getFeatureInfo(gobject@objects[[nm]], ...)
+            # request the giottoPoints (not the SpatVector) so the filter
+            # has feat_ID attached
+            args <- list(...)
+            args$return_giottoPoints <- TRUE
+            fi <- do.call(getFeatureInfo,
+                c(list(gobject = gobject@objects[[nm]]), args))
+            if (isTRUE(unfiltered)) fi
+            else .gm_apply_child_view(fi, gobject, nm)
         })
         names(out) <- objs
         out
@@ -756,7 +853,9 @@ setMethod("setFeatureInfo", signature("giottoMulti"),
 #' @rdname getGiottoImage
 #' @export
 setMethod("getGiottoImage", signature("giottoMulti"),
-    function(gobject, object = NULL, ...) {
+    function(gobject, object = NULL, unfiltered = FALSE, ...) {
+        # images have no cell or feat axis; `unfiltered` is accepted for API
+        # uniformity but has no effect.
         objs <- .gm_resolve_active(gobject, object)
         out <- lapply(objs, function(nm) {
             getGiottoImage(gobject@objects[[nm]], ...)

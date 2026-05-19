@@ -425,3 +425,39 @@ test_that("getCellMetadata applies id_map view filter on giottoMulti", {
     # joint slot untouched
     expect_identical(nrow(mg2@cell_metadata$cell$rna[]), 5L)
 })
+
+
+# Per-child view filter (default-on, unfiltered escape hatch) ####
+
+test_that("getSpatialLocations per-child filters by id_map's local IDs", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    # subset narrows globals for child "a" to c1, c3 (locals c1, c3 of a)
+    mg2 <- subset(mg, cells = c("a::c1", "a::c3", "b::c1"))
+
+    sl_a <- getSpatialLocations(mg2, object = "a")$a
+    expect_s4_class(sl_a, "spatLocsObj")
+    expect_identical(sort(sl_a[]$cell_ID), c("c1", "c3"))
+
+    sl_b <- getSpatialLocations(mg2, object = "b")$b
+    expect_identical(sl_b[]$cell_ID, "c1")
+
+    # underlying child slot untouched
+    expect_identical(length(spatIDs(mg2@objects$a)), 5L)
+})
+
+test_that("unfiltered = TRUE returns the child's full content", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    mg2 <- subset(mg, cells = c("a::c1"))
+
+    # default: narrowed
+    sl_filtered <- getSpatialLocations(mg2, object = "a")$a
+    expect_identical(nrow(sl_filtered[]), 1L)
+
+    # escape hatch: full child
+    sl_full <- getSpatialLocations(mg2, object = "a", unfiltered = TRUE)$a
+    expect_identical(nrow(sl_full[]), 5L)
+})
