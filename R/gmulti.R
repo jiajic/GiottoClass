@@ -121,6 +121,7 @@ giottoMulti <- setClass(
         # multi-specific
         objects             = "list",
         id_map              = "list",
+        id_sig              = "list",
         active              = "character",
         access              = "data.frame",
 
@@ -145,6 +146,7 @@ giottoMulti <- setClass(
     prototype = list(
         objects             = list(),
         id_map              = list(cells = NULL, feats = NULL),
+        id_sig              = list(),
         active              = NA_character_,
         access              = data.frame(
             object = character(),
@@ -178,30 +180,36 @@ giottoMulti <- setClass(
 setMethod("initialize", signature("giottoMulti"), function(.Object, objects = NULL, ...) {
     .Object <- callNextMethod(.Object, ...)
 
-    if (is.null(objects) || length(objects) == 0L) return(.Object)
+    # Construction path: ingest the children, populate active + access. Skipped
+    # on bare re-init calls (no `objects` arg) so an already-constructed
+    # giottoMulti can be re-initialized without re-supplying its children.
+    if (!is.null(objects) && length(objects) > 0L) {
+        checkmate::assert_list(objects, types = "giotto", names = "unique",
+            .var.name = "objects")
 
-    checkmate::assert_list(objects, types = "giotto", names = "unique",
-        .var.name = "objects")
+        .Object@objects <- objects
 
-    .Object@objects <- objects
+        # active defaults to all
+        if (length(.Object@active) == 1L && is.na(.Object@active)) {
+            .Object@active <- names(objects)
+        }
 
-    # active defaults to all
-    if (length(.Object@active) == 1L && is.na(.Object@active)) {
-        .Object@active <- names(objects)
+        # access table: one row per child with default spat_unit / feat_type
+        if (nrow(.Object@access) == 0L) {
+            .Object@access <- .gm_default_access(objects)
+        }
     }
 
-    # access table: one row per child with its default spat_unit / feat_type
-    if (nrow(.Object@access) == 0L) {
-        .Object@access <- .gm_default_access(objects)
-    }
+    if (length(.Object@objects) == 0L) return(.Object)
 
-    # id_map: namespace cell IDs as "{object}::{local_id}"; feats default to
-    # passthrough (overlap across datasets is real overlap)
-    if (is.null(.Object@id_map$cells)) {
-        .Object@id_map$cells <- .gm_build_cell_idmap(objects)
-    }
-    if (is.null(.Object@id_map$feats)) {
-        .Object@id_map$feats <- .gm_build_feat_idmap(objects)
+    # id_map: cache rebuilt only when child length-signatures differ from the
+    # cached signature. Bare re-init when nothing changed is a no-op modulo a
+    # signature comparison over N children — microseconds even at atlas scale.
+    cur_sig <- .gm_compute_sig(.Object@objects)
+    if (!identical(cur_sig, .Object@id_sig)) {
+        .Object@id_map$cells <- .gm_build_cell_idmap(.Object@objects)
+        .Object@id_map$feats <- .gm_build_feat_idmap(.Object@objects)
+        .Object@id_sig <- cur_sig
     }
 
     .Object
@@ -254,9 +262,106 @@ setMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing"),
 setReplaceMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing", value = "giotto"),
     function(x, i, j, ..., value) {
         x@objects[[i]] <- value
-        # invalidate id_map for this object — caller is expected to refresh
-        # via .gm_rebuild_idmap(x). Doing it eagerly would be surprising for
-        # large objects; leave it explicit.
+        # id_map is not eagerly refreshed; the user (or the next initialize()
+        # call) is responsible. initialize() detects the change via the
+        # length-signature fast-path.
+        x
+    }
+)
+
+
+# REBUILD / REALIGN ####
+
+#' @title Rebuild giottoMulti id_map
+#' @name rebuildMaps
+#' @description
+#' Force a rebuild of `@id_map` and the cached length signature from the
+#' current state of `@objects`. This is the explicit escape hatch when
+#' children have been mutated outside the approved op surface and the multi
+#' needs to be brought back into sync.
+#'
+#' Identical in effect to `initialize(mg)`, but named to communicate the
+#' intent. Joint shared slots (`@expression`, `@cell_metadata`, ...) are not
+#' touched — if they no longer align with the rebuilt id_map, the caller is
+#' responsible for re-supplying them.
+#' @param x a `giottoMulti`
+#' @returns the input `giottoMulti` with `@id_map` and `@id_sig` refreshed
+#' @export
+setGeneric("rebuildMaps", function(x, ...) standardGeneric("rebuildMaps"))
+
+#' @rdname rebuildMaps
+#' @export
+setMethod("rebuildMaps", "giottoMulti", function(x, ...) {
+    # force a rebuild by clearing the cached signature, then re-init
+    x@id_sig <- list()
+    initialize(x)
+})
+
+
+# SUBSET ####
+
+#' @title Subset a giottoMulti
+#' @name subset-giottoMulti
+#' @description
+#' Narrow the multi's current view to a subset of global cell IDs and/or
+#' global feature IDs. Children are not modified — their full state is
+#' preserved. Only `@id_map` (and joint shared slots, when populated) is
+#' trimmed.
+#'
+#' To restore the unfiltered view, call `rebuildMaps()`; this rebuilds the
+#' id_map from children's current state. Joint shared slots are not
+#' regenerated — that requires re-running whichever step produced them
+#' (typically integration).
+#' @param x a `giottoMulti`
+#' @param cells `character` vector of global cell IDs to retain. `NULL` =
+#'   no cell-level filter.
+#' @param features `character` vector of global feature IDs to retain.
+#'   `NULL` = no feature-level filter.
+#' @param ... not used
+#' @returns a `giottoMulti` with narrowed `@id_map`
+#' @export
+setMethod("subset", "giottoMulti",
+    function(x, cells = NULL, features = NULL, ...) {
+        if (!is.null(cells)) {
+            checkmate::assert_character(cells, any.missing = FALSE)
+            m <- x@id_map$cells
+            keep <- m$global_id %in% cells
+            missing <- setdiff(cells, m$global_id)
+            if (length(missing) > 0L) {
+                warning(sprintf(
+                    "%d requested cell global_id(s) not in id_map (ignored)",
+                    length(missing)
+                ), call. = FALSE)
+            }
+            x@id_map$cells <- m[keep, ]
+        }
+        if (!is.null(features)) {
+            checkmate::assert_character(features, any.missing = FALSE)
+            m <- x@id_map$feats
+            keep <- m$global_id %in% features
+            missing <- setdiff(features, m$global_id)
+            if (length(missing) > 0L) {
+                warning(sprintf(
+                    "%d requested feature global_id(s) not in id_map (ignored)",
+                    length(missing)
+                ), call. = FALSE)
+            }
+            x@id_map$feats <- m[keep, ]
+        }
+
+        # TODO: trim joint shared slots (@expression, @cell_metadata,
+        # @dimension_reduction, @nn_network, @spatial_enrichment) to the
+        # surviving globals. Deferred — the common path is to subset BEFORE
+        # populating joint state. When the caller subsets after joint state
+        # exists, getExpression(mg) / getCellMetadata(mg) will return the full
+        # pre-subset slots and won't match the narrowed id_map.
+        if (!is.null(x@expression) || !is.null(x@cell_metadata)) {
+            warning(wrap_txt("Joint shared slots are populated and were not
+                trimmed by subset(). Read accessors will return the full joint
+                content, which may not match the narrowed id_map. Joint-slot
+                trimming on subset is not yet implemented."), call. = FALSE)
+        }
+
         x
     }
 )
@@ -300,6 +405,23 @@ setMethod("show", "giottoMulti", function(object) {
         )
     })
     do.call(rbind, rows)
+}
+
+#' Compute a cheap length-signature of each child's ID slots.
+#'
+#' Used by `initialize(giottoMulti)` as a fast-path: if signatures match the
+#' cached `@id_sig`, the id_map is up-to-date and we skip the rebuild. Catches
+#' the realistic mutation modes (cells/features added or removed; child added
+#' or replaced). Misses same-length-different-content edits, which are
+#' user-error territory at the multi level.
+#' @noRd
+.gm_compute_sig <- function(objects) {
+    lapply(objects, function(g) {
+        list(
+            cell = lengths(slot(g, "cell_ID")),
+            feat = lengths(slot(g, "feat_ID"))
+        )
+    })
 }
 
 #' @noRd

@@ -253,3 +253,106 @@ test_that("setGiotto on giottoMulti routes spatial subobject per-child", {
     expect_s4_class(mg2, "giottoMulti")
     expect_identical(nrow(getSpatialLocations(mg2, object = "a")$a[]), 5L)
 })
+
+
+# id_map caching: fast-path initialize, rebuildMaps escape hatch ####
+
+test_that("constructor populates id_sig alongside id_map", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    # id_sig is a per-child list of cell/feat lengths
+    expect_identical(names(mg@id_sig), c("a", "b"))
+    expect_identical(mg@id_sig$a$cell, lengths(g1@cell_ID))
+    expect_identical(mg@id_sig$a$feat, lengths(g1@feat_ID))
+    expect_identical(mg@id_sig$b$cell, lengths(g2@cell_ID))
+})
+
+test_that("initialize fast-path: id_map unchanged when children unchanged", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    before <- mg@id_map
+
+    # mutate id_map to detect whether a rebuild fired
+    mg@id_map$cells <- before$cells[1, ]
+    mg2 <- initialize(mg)
+    # signatures match (children unchanged), so the narrowed id_map is kept
+    expect_identical(nrow(mg2@id_map$cells), 1L)
+})
+
+test_that("initialize rebuilds id_map when child length signature changes", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    expect_identical(nrow(mg@id_map$cells), 5L)
+
+    # swap in a child with a different cell count — simulates direct mutation
+    g1_smaller <- .mk_minimal(2, 4)
+    mg@objects$a <- g1_smaller
+
+    mg2 <- initialize(mg)
+    # signature changed → full rebuild
+    expect_identical(nrow(mg2@id_map$cells), 2L)
+    expect_identical(mg2@id_sig$a$cell, lengths(g1_smaller@cell_ID))
+})
+
+test_that("rebuildMaps forces a rebuild even when signatures match", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    # narrow id_map manually
+    mg@id_map$cells <- mg@id_map$cells[1:2, ]
+    # signatures still match children's actual lengths, so initialize fast-paths
+    expect_identical(nrow(initialize(mg)@id_map$cells), 2L)
+    # but rebuildMaps clears @id_sig first → full rebuild
+    expect_identical(nrow(rebuildMaps(mg)@id_map$cells), 5L)
+})
+
+
+# subset narrows id_map non-destructively ####
+
+test_that("subset(mg, cells = ...) narrows id_map without touching children", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    keep <- c("a::c1", "a::c2", "b::c1")
+    mg2 <- subset(mg, cells = keep)
+
+    expect_identical(mg2@id_map$cells$global_id, keep)
+    # children intact
+    expect_identical(length(spatIDs(mg2@objects$a)), 5L)
+    expect_identical(length(spatIDs(mg2@objects$b)), 3L)
+    # spatIDs on the multi reflects the narrowed view
+    expect_identical(spatIDs(mg2), keep)
+})
+
+test_that("subset(mg, features = ...) narrows feat id_map", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    keep <- c("f1", "f3")
+    mg2 <- subset(mg, features = keep)
+    expect_identical(sort(unique(mg2@id_map$feats$global_id)), sort(keep))
+})
+
+test_that("subset warns on missing globals", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    expect_warning(
+        subset(mg, cells = c("a::c1", "a::nope")),
+        "not in id_map"
+    )
+})
+
+test_that("rebuildMaps restores full view after a subset", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    mg2 <- subset(mg, cells = c("a::c1"))
+    expect_identical(nrow(mg2@id_map$cells), 1L)
+
+    mg3 <- rebuildMaps(mg2)
+    expect_identical(nrow(mg3@id_map$cells), 8L)  # 5 + 3
+})
