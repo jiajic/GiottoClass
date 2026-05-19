@@ -131,8 +131,15 @@ test_that("getExpression on giottoMulti reads from parent's shared slot", {
     # parent slot is empty; getExpression should error usefully
     expect_error(getExpression(mg))
 
-    # populate parent's shared slot, exercising the gAny method's slot read
-    mg@expression <- g1@expression
+    # populate parent's shared slot. Joint slots are keyed on GLOBAL IDs
+    # (sample::id), matching @id_map$cells$global_id; the view filter
+    # expects this contract.
+    e1 <- g1@expression$cell$rna$raw
+    mat <- e1[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e1[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = e1)))
+
     e <- getExpression(mg)
     expect_s4_class(e, "exprObj")
     expect_identical(dim(e[]), c(4L, 5L))
@@ -148,10 +155,21 @@ test_that("getCellMetadata works identically on giotto via gAny method", {
 test_that("getCellMetadata on giottoMulti reads from parent's shared slot", {
     g1 <- .mk_minimal(5, 4)
     mg <- createGiottoMulti(list(a = g1))
-    # populate both shared slots — set_default_spat_unit reads @expression to
-    # resolve defaults
-    mg@expression <- g1@expression
-    mg@cell_metadata <- g1@cell_metadata
+
+    # populate shared slots with globally-keyed content (sample::id), matching
+    # the @id_map view filter contract.
+    e1 <- g1@expression$cell$rna$raw
+    mat <- e1[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e1[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = e1)))
+
+    cm1 <- g1@cell_metadata$cell$rna
+    dt <- cm1[]
+    dt$cell_ID <- paste("a", dt$cell_ID, sep = "::")
+    cm1[] <- dt
+    mg@cell_metadata <- list(cell = list(rna = cm1))
+
     cm <- getCellMetadata(mg)
     expect_s4_class(cm, "cellMetaObj")
     expect_identical(nrow(cm[]), 5L)
@@ -217,7 +235,13 @@ test_that("setGiotto on giottoMulti routes shared subobject to parent", {
     # parent's shared expression slot starts empty
     expect_null(mg@expression)
 
+    # joint expression is keyed on global IDs (sample::id) to match the
+    # @id_map view filter contract.
     e <- getExpression(g1)
+    mat <- e[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e[] <- mat
+
     mg2 <- setGiotto(mg, e, verbose = FALSE)
     expect_s4_class(mg2, "giottoMulti")
     # shared slot now populated, child untouched
@@ -355,4 +379,49 @@ test_that("rebuildMaps restores full view after a subset", {
 
     mg3 <- rebuildMaps(mg2)
     expect_identical(nrow(mg3@id_map$cells), 8L)  # 5 + 3
+})
+
+
+# View filter: getters reflect @id_map without trimming the joint slots ####
+
+test_that("getExpression applies id_map view filter on giottoMulti", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    # populate joint @expression with globally-keyed colnames
+    e <- getExpression(g1)
+    mat <- e[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = e)))
+
+    # full view: all 5 cells
+    expect_identical(ncol(getExpression(mg)[]), 5L)
+
+    # subset narrows the view; joint slot stays full
+    mg2 <- subset(mg, cells = c("a::c1", "a::c3"))
+    expect_identical(ncol(getExpression(mg2)[]), 2L)
+    # joint slot itself is untouched
+    expect_identical(ncol(mg2@expression$cell$rna$raw[]), 5L)
+
+    # rebuildMaps restores the full view without re-supplying expression
+    mg3 <- rebuildMaps(mg2)
+    expect_identical(ncol(getExpression(mg3)[]), 5L)
+})
+
+test_that("getCellMetadata applies id_map view filter on giottoMulti", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    cm1 <- g1@cell_metadata$cell$rna
+    dt <- cm1[]
+    dt$cell_ID <- paste("a", dt$cell_ID, sep = "::")
+    cm1[] <- dt
+    mg@cell_metadata <- list(cell = list(rna = cm1))
+
+    expect_identical(nrow(getCellMetadata(mg)[]), 5L)
+    mg2 <- subset(mg, cells = c("a::c2"))
+    expect_identical(nrow(getCellMetadata(mg2)[]), 1L)
+    # joint slot untouched
+    expect_identical(nrow(mg2@cell_metadata$cell$rna[]), 5L)
 })

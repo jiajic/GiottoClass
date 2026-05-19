@@ -349,18 +349,10 @@ setMethod("subset", "giottoMulti",
             x@id_map$feats <- m[keep, ]
         }
 
-        # TODO: trim joint shared slots (@expression, @cell_metadata,
-        # @dimension_reduction, @nn_network, @spatial_enrichment) to the
-        # surviving globals. Deferred — the common path is to subset BEFORE
-        # populating joint state. When the caller subsets after joint state
-        # exists, getExpression(mg) / getCellMetadata(mg) will return the full
-        # pre-subset slots and won't match the narrowed id_map.
-        if (!is.null(x@expression) || !is.null(x@cell_metadata)) {
-            warning(wrap_txt("Joint shared slots are populated and were not
-                trimmed by subset(). Read accessors will return the full joint
-                content, which may not match the narrowed id_map. Joint-slot
-                trimming on subset is not yet implemented."), call. = FALSE)
-        }
+        # Joint shared slots are NOT trimmed here. Reads apply the @id_map
+        # view filter on the fly (see .gm_apply_view), so subset() narrows the
+        # visible content cheaply and reversibly. To free the memory held by
+        # joint slots after committing to a subset, use compact() (TBD).
 
         x
     }
@@ -405,6 +397,72 @@ setMethod("show", "giottoMulti", function(object) {
         )
     })
     do.call(rbind, rows)
+}
+
+#' Apply the giottoMulti id_map view to a joint-slot subobject.
+#'
+#' Shared-domain getter methods read the joint slot and pass the result here.
+#' For a giottoMulti, this filters the subobject's per-cell axis (and/or
+#' per-feature axis) down to whichever globals are currently in scope per
+#' `@id_map`. For a single giotto this is a no-op — there is no id_map to
+#' consult, and the subobject is already aligned with the gobject's cells.
+#'
+#' Filter axis by subobject class:
+#' * `exprObj`              cells = matrix cols, feats = matrix rows
+#' * `cellMetaObj` / `spatEnrObj` cells = cell_ID column
+#' * `featMetaObj`          feats = feat_ID column
+#' * `dimObj`               cells = coordinates row names
+#'
+#' Other subobject classes (nnNetObj, multiomics ...) pass through unfiltered
+#' for now; wire them in as the joint use cases come up.
+#' @noRd
+.gm_apply_view <- function(x, gobject) {
+    if (!inherits(gobject, "giottoMulti")) return(x)
+    cells <- gobject@id_map$cells$global_id
+    feats <- gobject@id_map$feats$global_id
+
+    if (inherits(x, "exprObj")) {
+        mat <- x[]
+        if (!is.null(cells)) {
+            keep <- colnames(mat) %in% cells
+            mat <- mat[, keep, drop = FALSE]
+        }
+        if (!is.null(feats)) {
+            keep <- rownames(mat) %in% feats
+            mat <- mat[keep, , drop = FALSE]
+        }
+        x[] <- mat
+        return(x)
+    }
+
+    if (inherits(x, c("cellMetaObj", "spatEnrObj"))) {
+        if (!is.null(cells)) {
+            cell_ID <- NULL  # data.table NSE
+            dt <- x[]
+            x[] <- dt[cell_ID %in% cells]
+        }
+        return(x)
+    }
+
+    if (inherits(x, "featMetaObj")) {
+        if (!is.null(feats)) {
+            feat_ID <- NULL  # data.table NSE
+            dt <- x[]
+            x[] <- dt[feat_ID %in% feats]
+        }
+        return(x)
+    }
+
+    if (inherits(x, "dimObj")) {
+        if (!is.null(cells)) {
+            coords <- x@coordinates
+            keep <- rownames(coords) %in% cells
+            x@coordinates <- coords[keep, , drop = FALSE]
+        }
+        return(x)
+    }
+
+    x
 }
 
 #' Compute a cheap length-signature of each child's ID slots.
