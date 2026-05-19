@@ -466,13 +466,11 @@ setMethod("initialize", signature("giottoAffineImage"), function(.Object, ...) {
         unique_expr_sets <- unique(avail_expr[, .(spat_unit, feat_type)])
 
         for (set_i in nrow(unique_expr_sets)) {
-            exp_list <- get_expression_values_list(
-                gobject = .Object,
+            exp_list <- .Object[[
+                "expression",
                 spat_unit = unique_expr_sets$spat_unit[[set_i]],
-                feat_type = unique_expr_sets$feat_type[[set_i]],
-                output = "exprObj",
-                set_defaults = FALSE
-            )
+                feat_type = unique_expr_sets$feat_type[[set_i]]
+            ]]
 
             exp_list_names <- lapply(exp_list, spatIDs)
             list_match <- vapply(

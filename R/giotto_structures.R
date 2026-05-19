@@ -984,7 +984,7 @@ addSpatialCentroidLocationsLayer <- function(gobject,
     # There may be no existing data in expression slot to find feat_type
     # nesting from
 
-    gpoly <- get_polygon_info(gobject,
+    gpoly <- getPolygonInfo(gobject,
         polygon_name = poly_info,
         return_giottoPolygon = TRUE
     )

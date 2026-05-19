@@ -2496,10 +2496,10 @@ aggregateStacksLocations <- function(gobject,
     # aggregate locations
     locs_list <- list()
     for (spat_unit in spat_units) {
-        locDT <- get_spatial_locations(
+        locDT <- getSpatialLocations(
             gobject = gobject,
             spat_unit = spat_unit,
-            spat_loc_name = values,
+            name = values,
             output = "data.table"
         )
         locs_list[[spat_unit]] <- locDT
@@ -2574,7 +2574,7 @@ aggregateStacksLocations <- function(gobject,
     stack_list <- list()
     for (spat_i in seq_len(length(spat_units))) {
         spat <- spat_units[[spat_i]]
-        stackspatvector <- get_polygon_info(
+        stackspatvector <- getPolygonInfo(
             gobject = gobject,
             polygon_name = spat,
             polygon_overlap = NULL,

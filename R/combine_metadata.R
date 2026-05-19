@@ -1028,7 +1028,7 @@ calculateSpatCellMetadataProportions <- function(gobject,
     )
 
     # get spatial network to use
-    sp_network <- get_spatialNetwork(
+    sp_network <- getSpatialNetwork(
         gobject = gobject,
         spat_unit = spat_unit,
         name = spat_network,

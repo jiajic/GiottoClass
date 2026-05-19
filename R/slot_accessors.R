@@ -322,7 +322,7 @@ set_cell_id <- function(gobject,
             ))
         } else if (spat_unit %in% si_avail$spat_info) { # fallback to spat_info
 
-            cell_IDs <- spatIDs(get_polygon_info(
+            cell_IDs <- spatIDs(getPolygonInfo(
                 gobject = gobject,
                 polygon_name = spat_unit,
                 return_giottoPolygon = TRUE
@@ -489,44 +489,6 @@ set_feat_id <- function(gobject,
 #' @description Get cell metadata from giotto object
 #' @returns a data.table or cellMetaObj
 #' @noRd
-get_cell_metadata <- function(gobject,
-    spat_unit = NULL,
-    feat_type = NULL,
-    output = c("cellMetaObj", "data.table"),
-    copy_obj = TRUE,
-    set_defaults = TRUE) {
-    output <- match.arg(output, choices = c("cellMetaObj", "data.table"))
-
-    # 1. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        .set_default_nesting(gobject, spat_unit, feat_type)
-    }
-
-    # 2. Find object - note that metadata objects do not have names
-    cellMeta <- gobject@cell_metadata[[spat_unit]][[feat_type]]
-
-    if (inherits(cellMeta, "list") | is.null(cellMeta)) {
-        stop("metadata referenced does not exist.")
-    }
-    if (!inherits(cellMeta, "cellMetaObj")) {
-        stop("metadata referenced is not cellMetaObj")
-    }
-
-    if (isTRUE(copy_obj)) cellMeta[] <- data.table::copy(cellMeta[])
-
-    # 3. Return as desired object type
-    if (output == "cellMetaObj") {
-        # return cellMetaObj
-        return(cellMeta)
-    } else if (output == "data.table") {
-        cellMeta <- slot(cellMeta, "metaDT")
-
-        # return data.table
-        return(cellMeta)
-    }
-}
-
-
 #' @title getCellMetadata
 #' @name getCellMetadata
 #' @inheritParams data_access_params
@@ -546,14 +508,25 @@ getCellMetadata <- function(gobject,
     output = c("cellMetaObj", "data.table"),
     copy_obj = TRUE,
     set_defaults = TRUE) {
-    get_cell_metadata(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        feat_type = feat_type,
-        output = output,
-        copy_obj = copy_obj,
-        set_defaults = set_defaults
-    )
+    output <- match.arg(output, choices = c("cellMetaObj", "data.table"))
+
+    if (isTRUE(set_defaults)) {
+        .set_default_nesting(gobject, spat_unit, feat_type)
+    }
+
+    cellMeta <- gobject@cell_metadata[[spat_unit]][[feat_type]]
+
+    if (inherits(cellMeta, "list") | is.null(cellMeta)) {
+        stop("metadata referenced does not exist.")
+    }
+    if (!inherits(cellMeta, "cellMetaObj")) {
+        stop("metadata referenced is not cellMetaObj")
+    }
+
+    if (isTRUE(copy_obj)) cellMeta[] <- data.table::copy(cellMeta[])
+
+    if (output == "cellMetaObj") return(cellMeta)
+    if (output == "data.table") return(slot(cellMeta, "metaDT"))
 }
 
 
@@ -939,82 +912,13 @@ getExpression <- function(
         feat_type = NULL,
         output = c("exprObj", "matrix"),
         set_defaults = TRUE) {
-    # 0. Check input
     assert_giotto(gobject)
     output <- match.arg(output, choices = c("exprObj", "matrix"))
 
-    # 1. Set feat_type and spat_unit
     if (isTRUE(set_defaults)) {
         .set_default_nesting(gobject, spat_unit, feat_type)
     }
 
-
-
-    # 2. Find object
-    potential_values <- list_expression_names(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        feat_type = feat_type
-    )
-
-    if (is.null(values)) values <- potential_values[[1]]
-
-
-    # 3. Get object in desired format
-    expr_values <- get_expression_values(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        feat_type = feat_type,
-        values = values,
-        output = output,
-        set_defaults = FALSE
-    )
-
-    return(expr_values)
-}
-
-
-
-
-
-
-# Internal function to get expression values from giotto object.
-# **Controls expression slot nesting and structure**
-#' @name get_expression_values
-#' @title get_expression_values
-#' @inheritParams data_access_params
-#' @param values expression values to
-#' extract (e.g. "raw", "normalized", "scaled")
-#' @param output what object type to retrieve the expression as. Currently
-#' either matrix' for the matrix object contained in the exprObj or
-#' 'exprObj' (default) for the exprObj itself are allowed.
-#' @keywords internal
-#' @returns exprObj or matrix depending on output param
-#' @noRd
-get_expression_values <- function(
-        gobject,
-        spat_unit = NULL,
-        feat_type = NULL,
-        values = c("raw", "normalized", "scaled"),
-        output = c("exprObj", "matrix"),
-        set_defaults = TRUE) {
-    assert_giotto(gobject)
-
-    ## check parameters
-    values <- match.arg(
-        arg = values,
-        choices = unique(c("raw", "normalized", "scaled", values))
-    )
-
-    output <- match.arg(output, choices = c("exprObj", "matrix"))
-
-    # 1. Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        .set_default_nesting(gobject, spat_unit, feat_type)
-    }
-
-
-    # 2. Find object
     potential_values <- list_expression_names(
         gobject = gobject,
         spat_unit = spat_unit,
@@ -1030,8 +934,7 @@ get_expression_values <- function(
         ))
     }
 
-
-    ## special checks/cases for giotto standard pipeline
+    # Targeted error messages for the standard giotto pipeline names
     if (values == "scaled" & !"scaled" %in% potential_values) {
         stop(wrap_txt("Scaled expression not found.
                 First run scaling (& normalization) step(s)", errWidth = TRUE))
@@ -1052,14 +955,11 @@ get_expression_values <- function(
         ))
     }
 
-
-    # Get info from slot nesting
     expr_vals <- gobject@expression[[spat_unit]][[feat_type]][[values]]
 
-    # Read matrix from h5 file if needed
+    # Reload matrix from h5 file if HDF5-backed
     if (!is.null(slot(gobject, "h5_file"))) {
         matrix_path <- expr_vals[]
-
         if (grepl("scaled", matrix_path)) {
             expression_matrix <- HDF5Array::HDF5Array(
                 filepath = slot(gobject, "h5_file"),
@@ -1072,49 +972,23 @@ get_expression_values <- function(
                 path = matrix_path
             )
         }
-
         slot(expr_vals, "exprMat") <- expression_matrix
     }
 
-    # Output
-    if (output == "exprObj") {
-        return(expr_vals)
-    } else if (output == "matrix") {
-        return(expr_vals[])
-    }
+    if (output == "exprObj") return(expr_vals)
+    if (output == "matrix") return(expr_vals[])
 }
 
 
 
 
 
-#' @description Get all expression values for a specified spatial unit
-#' and feature type
-#' @keywords internal
-#' @return list of exprObj
-#' @noRd
-get_expression_values_list <- function(gobject,
-    spat_unit = NULL,
-    feat_type = NULL,
-    output = c("exprObj", "matrix"),
-    set_defaults = TRUE) {
-    assert_giotto(gobject)
 
-    output <- match.arg(output, choices = c("exprObj", "matrix"))
 
-    if (isTRUE(set_defaults)) {
-        .set_default_nesting(gobject, spat_unit, feat_type)
-    }
 
-    data_list <- slot(gobject, "expression")[[spat_unit]][[feat_type]]
 
-    if (output == "exprObj") {
-        return(data_list)
-    }
-    if (output == "matrix") {
-        return(lapply(data_list, `[`))
-    }
-}
+
+
 
 
 
@@ -1581,55 +1455,9 @@ getSpatialLocations <- function(gobject,
     verbose = TRUE,
     set_defaults = TRUE,
     simplify = TRUE) {
-    # Pass to internal function
-    spatloc <- get_spatial_locations(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        spat_loc_name = name,
-        output = output,
-        copy_obj = copy_obj,
-        verbose = verbose,
-        set_defaults = set_defaults,
-        simplify = simplify
-    )
-
-    return(spatloc)
-}
-
-
-
-
-
-
-
-
-#' @title Get spatial locations
-#' @name get_spatial_locations
-#' @description Function to get a spatial location data.table
-#' @inheritParams data_access_params
-#' @param spat_loc_name name of spatial
-#' locations (defaults to first name in spatial_locs slot, e.g. "raw")
-#' @param output what object type to get the spatial locations as. Default is as
-#' a 'spatLocsObj'. Returning as 'data.table' is also possible.
-#' @param copy_obj whether to copy/duplicate when getting the
-#' object (default = TRUE)
-#' @param verbose be verbose
-#' @param simplify logical. Whether or not to take object out of a list when
-#' there is a length of 1.
-#' @returns data.table with coordinates or spatLocsObj depending on \code{output}
-#' @noRd
-get_spatial_locations <- function(gobject,
-    spat_unit = NULL,
-    spat_loc_name = NULL,
-    output = c("spatLocsObj", "data.table"),
-    copy_obj = TRUE,
-    verbose = TRUE,
-    set_defaults = TRUE,
-    simplify = TRUE) {
     output <- match.arg(output, choices = c("spatLocsObj", "data.table"))
     all_su <- identical(spat_unit, ":all:")
 
-    # spatial unit defaults
     if (isTRUE(set_defaults)) {
         spat_unit <- set_default_spat_unit(
             gobject = gobject, spat_unit = spat_unit
@@ -1638,7 +1466,6 @@ get_spatial_locations <- function(gobject,
 
     data_type <- "spatial locations/centroids"
     slotdata <- slot(gobject, "spatial_locs")
-    # empty slot
     if (is.null(slotdata) || length(slotdata) == 0L) {
         stop(wrap_txt(sprintf(
             "No %s in giotto object", data_type
@@ -1648,7 +1475,6 @@ get_spatial_locations <- function(gobject,
     slotdata <- slotdata[lengths(slotdata) > 0L]
 
     avail_su <- names(slotdata)
-    # nonexistent spat_units
     missing_su <- spat_unit[!spat_unit %in% avail_su]
     if (length(missing_su) > 0L && !all_su) {
         stop(wrap_txt(sprintf(
@@ -1657,29 +1483,16 @@ get_spatial_locations <- function(gobject,
         ), errWidth = TRUE), call. = FALSE)
     }
 
-    # subset to requested spat_units
-    if (!all_su) {
-        slotdata <- slotdata[spat_unit]
-    }
+    if (!all_su) slotdata <- slotdata[spat_unit]
     # list depth should be 2: 1. spat_unit(s), 2. spatLocsObj
-    su_names <- names(slotdata) # get surviving spat_unit names
+    su_names <- names(slotdata)
 
-    # select final data
     out_list <- lapply(su_names, function(su) {
         su_data <- slotdata[[su]]
+        if (is.null(name)) return(su_data[[1]])
+        if (identical(name, ":all:")) return(su_data)
 
-        # if spat_loc_name not given return first available
-        if (is.null(spat_loc_name)) {
-            return(su_data[[1]])
-        }
-
-        # directly return if all requested
-        if (identical(spat_loc_name, ":all:")) {
-            return(su_data)
-        }
-
-        # catch non-existing spat_loc_names requested
-        missing_sln <- spat_loc_name[!spat_loc_name %in% objName(su_data)]
+        missing_sln <- name[!name %in% objName(su_data)]
         if (length(missing_sln) > 0L) {
             stop(wrap_txt(sprintf(
                 "No %s with name '%s' and spat_unit '%s'\n", data_type,
@@ -1687,25 +1500,18 @@ get_spatial_locations <- function(gobject,
             ), errWidth = TRUE), call. = FALSE)
         }
 
-        # select specific
-        su_data <- su_data[spat_loc_name]
-        return(su_data)
+        su_data[name]
     })
-    out <- Reduce("c", out_list) # combine to single depth 1 list
+    out <- Reduce("c", out_list)
     if (!inherits(out, "list")) out <- list(out)
-    names(out) <- NULL # remove names
+    names(out) <- NULL
 
-    # process for output
     out <- lapply(out, function(x) {
         if (isTRUE(copy_obj)) x[] <- data.table::copy(x[])
-        res <- switch(output,
-            "spatLocsObj" = x,
-            "data.table" = x[]
-        )
-        return(res)
+        switch(output, "spatLocsObj" = x, "data.table" = x[])
     })
     if (isTRUE(simplify)) out <- .simplify_list(out)
-    return(out)
+    out
 }
 
 
@@ -1713,47 +1519,14 @@ get_spatial_locations <- function(gobject,
 
 
 
-#' @description Get all spatial locations for a specified spatial unit
-#' @keywords internal
-#' @returns list of spatLocsObj or data.tables depending on output param
-#' @noRd
-get_spatial_locations_list <- function(gobject,
-    spat_unit = NULL,
-    output = c("spatLocsObj", "data.table"),
-    copy_obj = TRUE,
-    verbose = TRUE,
-    set_defaults = TRUE) {
-    assert_giotto(gobject)
-
-    output <- match.arg(output, choices = c("spatLocsObj", "data.table"))
-
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
-        )
-    }
-
-    if (spat_unit == ":all:") {
-        data_list <- unlist(
-            gobject@spatial_locs,
-            recursive = TRUE, use.names = FALSE
-        )
-    } else {
-        data_list <- slot(gobject, "spatial_locs")[[spat_unit]]
-    }
 
 
-    if (isTRUE(copy_obj)) {
-        data_list <- lapply(data_list, copy)
-    }
 
 
-    switch(output,
-        "spatLocsObj" = return(data_list),
-        "data.table" = return(lapply(data_list, `[`))
-    )
-}
+
+
+
+
 
 
 
@@ -1924,7 +1697,24 @@ setSpatialLocations <- function(gobject,
 #' @keywords internal
 #' @returns dim reduction object (default) or dim reduction coordinates
 #' @noRd
-get_dimReduction <- function(gobject,
+#' @title Get dimension reduction
+#' @name getDimReduction
+#' @inheritParams data_access_params
+#' @param reduction reduction on cells or features (e.g. "cells", "feats")
+#' @param reduction_method reduction method (e.g. "pca", "umap", "tsne")
+#' @param name name of reduction results
+#' @param output object type to return as. Either 'dimObj' (default) or 'matrix'
+#' of the embedding coordinates.
+#' @description Function to get a dimension reduction object
+#' @returns dim reduction object (default) or dim reduction coordinates
+#' @family dimensional reduction data accessor functions
+#' @family functions to get data from giotto object
+#' @examples
+#' g <- GiottoData::loadGiottoMini("visium")
+#'
+#' getDimReduction(g)
+#' @export
+getDimReduction <- function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     reduction = c("cells", "feats"),
@@ -1934,11 +1724,10 @@ get_dimReduction <- function(gobject,
     set_defaults = TRUE) {
     checkmate::assert_class(gobject, "giotto")
 
-    # to be deprecated ('data.table' -> 'matrix')
+    # back-compat: "data.table" used to be accepted for matrix output
     if (!identical(output, c("dimObj", "matrix"))) {
         if (output == "data.table") output <- "matrix"
     }
-    ## check parameters
     output <- match.arg(output, choices = c("dimObj", "matrix"))
     reduction <- match.arg(arg = reduction, choices = c("cells", "feats"))
     reduction_method <- match.arg(
@@ -1946,12 +1735,10 @@ get_dimReduction <- function(gobject,
         choices = unique(c("pca", "umap", "tsne", reduction_method))
     )
 
-    # 1. Set feat_type and spat_unit
     if (isTRUE(set_defaults)) {
         .set_default_nesting(gobject, spat_unit, feat_type)
     }
 
-    # 2. Find object
     potential_drs <- list_dim_reductions_names(
         gobject = gobject,
         spat_unit = spat_unit,
@@ -1978,59 +1765,11 @@ get_dimReduction <- function(gobject,
         ))
     }
 
-    # get info from slot nesting
-    reduction_res <- gobject@dimension_reduction[[reduction]][[spat_unit]][[feat_type]][[reduction_method]][[name]]
+    reduction_res <- gobject@dimension_reduction[[reduction]][[
+        spat_unit]][[feat_type]][[reduction_method]][[name]]
 
-    ## return object or coordinates
-    if (output == "dimObj") {
-        return(reduction_res)
-    } else if (output == "matrix") {
-        return(slot(reduction_res, "coordinates"))
-    } else {
-        stop("other outputs not supported")
-    }
-}
-
-
-
-#' @title Get dimension reduction
-#' @name getDimReduction
-#' @inheritParams data_access_params
-#' @param reduction reduction on cells or features (e.g. "cells", "feats")
-#' @param reduction_method reduction method (e.g. "pca", "umap", "tsne")
-#' @param name name of reduction results
-#' @param output object type to return as. Either 'dimObj' (default) or 'matrix'
-#' of the embedding coordinates.
-#' @description Function to get a dimension reduction object
-#' @returns dim reduction object (default) or dim reduction coordinates
-#' @family dimensional reduction data accessor functions
-#' @family functions to get data from giotto object
-#' @examples
-#' g <- GiottoData::loadGiottoMini("visium")
-#'
-#' getDimReduction(g)
-#' @export
-getDimReduction <- function(gobject,
-    spat_unit = NULL,
-    feat_type = NULL,
-    reduction = c("cells", "feats"),
-    reduction_method = NULL,
-    name = NULL,
-    output = c("dimObj", "matrix"),
-    set_defaults = TRUE) {
-    # pass to internal
-    dimRed <- get_dimReduction(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        feat_type = feat_type,
-        reduction = reduction,
-        reduction_method = reduction_method,
-        name = name,
-        output = output,
-        set_defaults = set_defaults
-    )
-
-    return(dimRed)
+    if (output == "dimObj") return(reduction_res)
+    if (output == "matrix") return(slot(reduction_res, "coordinates"))
 }
 
 
@@ -2224,91 +1963,6 @@ setDimReduction <- function(gobject,
 #' @param output return a igraph or data.table object. Default 'igraph'
 #' @returns igraph or data.table object
 #' @noRd
-get_NearestNetwork <- function(gobject,
-    spat_unit = NULL,
-    feat_type = NULL,
-    nn_network_to_use = NULL,
-    network_name = NULL,
-    output = c("nnNetObj", "igraph", "data.table"),
-    set_defaults = TRUE) {
-    output <- match.arg(
-        arg = output,
-        choices = c("nnNetObj", "igraph", "data.table")
-    )
-
-    # 1.  Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        .set_default_nesting(gobject, spat_unit, feat_type)
-    }
-
-    # 2 Find the object
-    if (is.null(nn_network_to_use)) {
-        nn_network_to_use <- names(slot(gobject, "nn_network")[[spat_unit]][[feat_type]])[[1]]
-        if (is.null(nn_network_to_use)) {
-            stop(wrap_txt('There is currently no nearest-neighbor network
-                        created for spatial unit: "', spat_unit,
-                '" and feature type "', feat_type,
-                '". First run createNearestNetwork()\n',
-                sep = ""
-            ))
-        } else {
-            wrap_msg('The NN network type was not specified, default to the
-                    first: "',
-                nn_network_to_use, '"',
-                sep = ""
-            )
-        }
-    }
-
-    if (is.null(network_name)) {
-        network_name <- names(slot(gobject, "nn_network")[[spat_unit]][[feat_type]][[nn_network_to_use]])[[1]]
-        if (is.null(network_name)) {
-            stop(wrap_txt('There is currently no nearest-neighbor network
-                        built for spatial unit: "', spat_unit,
-                '" feature type: "', feat_type,
-                '" and network type: "', nn_network_to_use, '"\n',
-                sep = ""
-            ))
-        } else {
-            wrap_msg('The NN network name was not specified, default to the
-                    first: "',
-                network_name, '"',
-                sep = ""
-            )
-        }
-    }
-
-    # 3. get object in desired format
-
-    nnNet <- slot(gobject, "nn_network")[[spat_unit]][[
-        feat_type
-    ]][[nn_network_to_use]][[network_name]]
-    if (is.null(nnNet)) {
-        stop(wrap_txt('nn_network_to_use: "', nn_network_to_use,
-            '" or network_name: "', network_name, '" does not exist.
-                    Create a nearest-neighbor network first',
-            sep = ""
-        ))
-    }
-
-    if (output == "nnNetObj") {
-        return(nnNet) # return nnNetObj
-    } else if (output == "igraph" | output == "data.table") {
-        nnNet <- slot(nnNet, "igraph")
-
-        if (output == "igraph") {
-            return(nnNet)
-        } # return igraph
-        if (output == "data.table") {
-            nnNet <- data.table::setDT(igraph::get.data.frame(x = nnNet))
-            return(nnNet) # return data.table
-        }
-    }
-}
-
-
-
-
 #' @title Get nearest neighbor network
 #' @name getNearestNetwork
 #' @description Get a NN-network from a Giotto object
@@ -2332,18 +1986,66 @@ getNearestNetwork <- function(gobject,
     name = NULL,
     output = c("nnNetObj", "igraph", "data.table"),
     set_defaults = TRUE) {
-    # pass to internal
-    nn <- get_NearestNetwork(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        feat_type = feat_type,
-        nn_network_to_use = nn_type,
-        network_name = name,
-        output = output,
-        set_defaults = set_defaults
+    output <- match.arg(
+        arg = output,
+        choices = c("nnNetObj", "igraph", "data.table")
     )
 
-    return(nn)
+    if (isTRUE(set_defaults)) {
+        .set_default_nesting(gobject, spat_unit, feat_type)
+    }
+
+    # Fall back to first available nn_type if not supplied
+    if (is.null(nn_type)) {
+        nn_type <- names(
+            slot(gobject, "nn_network")[[spat_unit]][[feat_type]]
+        )[[1]]
+        if (is.null(nn_type)) {
+            stop(wrap_txt('There is currently no nearest-neighbor network
+                        created for spatial unit: "', spat_unit,
+                '" and feature type "', feat_type,
+                '". First run createNearestNetwork()\n',
+                sep = ""
+            ))
+        }
+        wrap_msg('The NN network type was not specified, default to the
+                first: "', nn_type, '"', sep = "")
+    }
+
+    # Fall back to first available name if not supplied
+    if (is.null(name)) {
+        name <- names(
+            slot(gobject, "nn_network")[[spat_unit]][[feat_type]][[nn_type]]
+        )[[1]]
+        if (is.null(name)) {
+            stop(wrap_txt('There is currently no nearest-neighbor network
+                        built for spatial unit: "', spat_unit,
+                '" feature type: "', feat_type,
+                '" and network type: "', nn_type, '"\n',
+                sep = ""
+            ))
+        }
+        wrap_msg('The NN network name was not specified, default to the
+                first: "', name, '"', sep = "")
+    }
+
+    nnNet <- slot(gobject, "nn_network")[[spat_unit]][[
+        feat_type]][[nn_type]][[name]]
+    if (is.null(nnNet)) {
+        stop(wrap_txt('nn_type: "', nn_type,
+            '" or name: "', name, '" does not exist.
+                Create a nearest-neighbor network first',
+            sep = ""
+        ))
+    }
+
+    if (output == "nnNetObj") return(nnNet)
+    if (output == "igraph") return(slot(nnNet, "igraph"))
+    if (output == "data.table") {
+        return(data.table::setDT(
+            igraph::get.data.frame(x = slot(nnNet, "igraph"))
+        ))
+    }
 }
 
 
@@ -2523,121 +2225,6 @@ setNearestNetwork <- function(gobject,
 #' there is a length of 1.
 #' @returns spatialNetworkObj of data.table
 #' @noRd
-get_spatialNetwork <- function(gobject,
-    spat_unit = NULL,
-    name = NULL,
-    output = c(
-        "spatialNetworkObj",
-        "networkDT",
-        "networkDT_before_filter",
-        "outputObj"
-    ),
-    set_defaults = TRUE,
-    copy_obj = TRUE,
-    verbose = TRUE,
-    simplify = TRUE) {
-    output <- match.arg(output, choices = c(
-        "spatialNetworkObj",
-        "networkDT",
-        "networkDT_before_filter",
-        "outputObj"
-    ))
-    all_su <- identical(spat_unit, ":all:")
-
-    # spatial unit defaults
-    if (isTRUE(set_defaults)) {
-        spat_unit <- set_default_spat_unit(
-            gobject = gobject, spat_unit = spat_unit
-        )
-    }
-
-    data_type <- "spatial network"
-    slotdata <- slot(gobject, "spatial_network")
-    # catch empty slot
-    if (is.null(slotdata) || length(slotdata) == 0L) {
-        stop(wrap_txt(sprintf(
-            "No %ss in giotto object", data_type
-        ), errWidth = TRUE), call. = FALSE)
-    }
-
-    # filter out length 0 spat_units
-    slotdata <- slotdata[lengths(slotdata) > 0L]
-
-    avail_su <- names(slotdata)
-    # nonexistent spat_units
-    missing_su <- spat_unit[!spat_unit %in% avail_su]
-    if (length(missing_su) > 0L && !all_su) {
-        stop(wrap_txt(sprintf(
-            "No %ss for spat_unit(s): '%s'", data_type,
-            paste(missing_su, collapse = "', '")
-        ), errWidth = TRUE), call. = FALSE)
-    }
-
-    # subset to requested spat_units
-    if (!all_su) {
-        slotdata <- slotdata[spat_unit]
-    }
-    # list depth should be 2: 1. spat_unit(s), 2. spatialNetworkObj
-    su_names <- names(slotdata) # get surviving spat_unit names
-
-    # select final data
-    out_list <- lapply(su_names, function(su) {
-        su_data <- slotdata[[su]]
-
-        # if name not given, return first available
-        if (is.null(name)) {
-            return(su_data[[1L]])
-        }
-
-        # directly return if all requested
-        if (identical(name, ":all:")) {
-            return(su_data)
-        }
-
-        # catch non-existing names requested
-        missing_snn <- name[!name %in% objName(su_data)]
-        if (length(missing_snn) > 0L) {
-            stop(wrap_txt(sprintf(
-                "No %ss with name '%s' and spat_unit '%s'\n",
-                data_type, paste(missing_snn, collapse = "', '"), su
-            ), errWidth = TRUE), call. = FALSE)
-        }
-
-        # select specific
-        su_data <- su_data[name]
-        return(su_data)
-    })
-
-    out <- Reduce("c", out_list) # combine to single depth 1 list
-    if (!inherits(out, "list")) out <- list(out)
-    names(out) <- NULL # remove names
-
-    # process for output
-    out <- lapply(out, function(x) {
-        if (isTRUE(copy_obj)) {
-            x[] <- data.table::copy(x[])
-            if (!is.null(x@networkDT_before_filter)) {
-                x@networkDT_before_filter <- data.table::copy(
-                    x@networkDT_before_filter
-                )
-            }
-        }
-
-        res <- switch(output,
-            "spatialNetworkObj" = x,
-            "networkDT" = x[],
-            "networkDT_before_filter" = x@networkDT_before_filter,
-            "outputObj" = x@outputObj
-        )
-        return(res)
-    })
-    if (isTRUE(simplify)) out <- .simplify_list(out)
-    return(out)
-}
-
-
-
-
 #' @title Get spatial network
 #' @name getSpatialNetwork
 #' @description Function to get a spatial network
@@ -2672,84 +2259,92 @@ getSpatialNetwork <- function(gobject,
     copy_obj = TRUE,
     verbose = TRUE,
     simplify = TRUE) {
-    # Pass to internal function
-    network <- get_spatialNetwork(
-        gobject = gobject,
-        spat_unit = spat_unit,
-        name = name,
-        output = output,
-        set_defaults = set_defaults,
-        copy_obj = copy_obj,
-        verbose = verbose,
-        simplify = simplify
-    )
-
-    return(network)
-}
-
-
-
-
-
-
-#' @description Get all spatial networks for a specified spatial unit
-#' @keywords internal
-#' @return list of dimObj or data.table depending on output param
-#' @noRd
-get_spatial_network_list <- function(gobject,
-    spat_unit = NULL,
-    output = c(
-        "spatialNetworkObj",
-        "networkDT",
-        "networkDT_before_filter",
-        "outputObj"
-    ),
-    set_defaults = TRUE,
-    copy_obj = TRUE) {
-    checkmate::assert_class(gobject, "giotto")
-
     output <- match.arg(output, choices = c(
         "spatialNetworkObj",
         "networkDT",
         "networkDT_before_filter",
         "outputObj"
     ))
+    all_su <- identical(spat_unit, ":all:")
 
     if (isTRUE(set_defaults)) {
         spat_unit <- set_default_spat_unit(
-            gobject = gobject,
-            spat_unit = spat_unit
+            gobject = gobject, spat_unit = spat_unit
         )
     }
 
-    if (spat_unit == ":all:") {
-        data_list <- unlist(
-            gobject@spatial_network,
-            recursive = TRUE, use.names = FALSE
+    data_type <- "spatial network"
+    slotdata <- slot(gobject, "spatial_network")
+    if (is.null(slotdata) || length(slotdata) == 0L) {
+        stop(wrap_txt(sprintf(
+            "No %ss in giotto object", data_type
+        ), errWidth = TRUE), call. = FALSE)
+    }
+
+    # filter out length 0 spat_units
+    slotdata <- slotdata[lengths(slotdata) > 0L]
+
+    avail_su <- names(slotdata)
+    missing_su <- spat_unit[!spat_unit %in% avail_su]
+    if (length(missing_su) > 0L && !all_su) {
+        stop(wrap_txt(sprintf(
+            "No %ss for spat_unit(s): '%s'", data_type,
+            paste(missing_su, collapse = "', '")
+        ), errWidth = TRUE), call. = FALSE)
+    }
+
+    if (!all_su) slotdata <- slotdata[spat_unit]
+    # list depth should be 2: 1. spat_unit(s), 2. spatialNetworkObj
+    su_names <- names(slotdata)
+
+    out_list <- lapply(su_names, function(su) {
+        su_data <- slotdata[[su]]
+
+        # if name not given, first available
+        if (is.null(name)) return(su_data[[1L]])
+        # all available
+        if (identical(name, ":all:")) return(su_data)
+
+        missing_snn <- name[!name %in% objName(su_data)]
+        if (length(missing_snn) > 0L) {
+            stop(wrap_txt(sprintf(
+                "No %ss with name '%s' and spat_unit '%s'\n",
+                data_type, paste(missing_snn, collapse = "', '"), su
+            ), errWidth = TRUE), call. = FALSE)
+        }
+
+        su_data[name]
+    })
+
+    out <- Reduce("c", out_list) # collapse to depth 1
+    if (!inherits(out, "list")) out <- list(out)
+    names(out) <- NULL
+
+    out <- lapply(out, function(x) {
+        if (isTRUE(copy_obj)) {
+            x[] <- data.table::copy(x[])
+            if (!is.null(x@networkDT_before_filter)) {
+                x@networkDT_before_filter <- data.table::copy(
+                    x@networkDT_before_filter
+                )
+            }
+        }
+        switch(output,
+            "spatialNetworkObj" = x,
+            "networkDT" = x[],
+            "networkDT_before_filter" = x@networkDT_before_filter,
+            "outputObj" = x@outputObj
         )
-    } else {
-        data_list <- slot(gobject, "spatial_network")[[spat_unit]]
-
-        data_list <- unlist(data_list, recursive = TRUE, use.names = FALSE)
-        data_list <- assign_objnames_2_list(data_list)
-    }
-    if (is.null(data_list)) {
-        return(NULL)
-    }
-
-    # copy object
-    if (isTRUE(copy_obj)) data_list <- lapply(data_list, copy)
-
-    # return object list
-    switch(output,
-        "spatialNetworkObj" = return(data_list),
-        "networkDT" = return(lapply(data_list, `[`)),
-        "networkDT_before_filter" = {
-            return(lapply(data_list, slot, "networkDT_before_filter"))
-        },
-        "outputObj" = return(lapply(data_list, slot, "outputObj"))
-    )
+    })
+    if (isTRUE(simplify)) out <- .simplify_list(out)
+    out
 }
+
+
+
+
+
+
 
 
 
@@ -3176,81 +2771,6 @@ setSpatialGrid <- function(gobject,
 #' there is a length of 1.
 #' @returns spatVector
 #' @noRd
-get_polygon_info <- function(gobject,
-    polygon_name = NULL,
-    polygon_overlap = NULL,
-    return_giottoPolygon = FALSE,
-    verbose = TRUE,
-    simplify = TRUE) {
-    slotdata <- slot(gobject, "spatial_info")
-    potential_names <- names(slotdata)
-
-    if (is.null(potential_names)) {
-        stop("Giotto object contains no polygon information")
-    }
-
-    # If polygon_name is not given...
-    if (is.null(polygon_name)) {
-        if ("cell" %in% potential_names) {
-            polygon_name <- "cell"
-            # Default to 'cell' as polygon_name if available
-        } else {
-            polygon_name <- potential_names[1]
-            # Select 1st available name if 'cell' is missing
-            if (isTRUE(verbose)) {
-                wrap_txtf("No polygon information named 'cell' discovered.
-                Selecting first available ('%s')", polygon_name)
-            }
-        }
-    }
-
-    all_p <- identical(polygon_name, ":all:")
-    # nonexistent polys
-    missing_p <- polygon_name[!polygon_name %in% potential_names]
-    if (length(missing_p) > 0L && !all_p) {
-        stop(wrap_txtf(
-            "No polygon information with name(s): '%s'",
-            paste(missing_p, collapse = "', '"),
-            errWidth = TRUE
-        ), call. = FALSE)
-    }
-
-    # subset to requested spat_units
-    if (!all_p) {
-        slotdata <- slotdata[polygon_name]
-    }
-
-    # process for output
-    names(slotdata) <- NULL # remove names
-    out <- lapply(slotdata, function(x) {
-        if (isTRUE(return_giottoPolygon)) {
-            return(x)
-        }
-
-        if (!is.null(polygon_overlap)) {
-            ovlp_data <- slot(x, "overlaps")
-            potential_overlaps <- names(ovlp_data)
-
-            if (!polygon_overlap %in% potential_overlaps) {
-                stop(wrap_txtf(
-                    "There is no polygon overlap information with name",
-                    polygon_overlap,
-                    errWidth = TRUE
-                ), call. = FALSE)
-            }
-            return(ovlp_data[[polygon_overlap]])
-        }
-
-        # return poly geom object
-        return(x[])
-    })
-    if (isTRUE(simplify)) out <- .simplify_list(out)
-    return(out)
-}
-
-
-
-
 
 
 #' @title Get polygon info
@@ -3285,39 +2805,64 @@ getPolygonInfo <- function(gobject = NULL,
         ))
     }
 
-    poly_info <- get_polygon_info(
-        gobject = gobject,
-        polygon_name = polygon_name,
-        polygon_overlap = polygon_overlap,
-        return_giottoPolygon = return_giottoPolygon,
-        verbose = verbose,
-        simplify = simplify
-    )
-    return(poly_info)
-}
+    slotdata <- slot(gobject, "spatial_info")
+    potential_names <- names(slotdata)
 
-
-
-
-
-#' @description Get list of all polygon info
-#' @keywords internal
-#' @return list of giottoPolygon or SpatVector depending on return_giottoPolygon
-#' param
-#' @noRd
-get_polygon_info_list <- function(gobject,
-    return_giottoPolygon = TRUE) {
-    assert_giotto(gobject)
-
-    data_list <- slot(gobject, "spatial_info")
-
-    # return objects
-    if (isTRUE(return_giottoPolygon)) {
-        return(data_list)
-    } else {
-        return(lapply(data_list, `[`))
+    if (is.null(potential_names)) {
+        stop("Giotto object contains no polygon information")
     }
+
+    if (is.null(polygon_name)) {
+        if ("cell" %in% potential_names) {
+            # Default to 'cell' if available
+            polygon_name <- "cell"
+        } else {
+            # Otherwise the first available
+            polygon_name <- potential_names[1]
+            if (isTRUE(verbose)) {
+                wrap_txtf("No polygon information named 'cell' discovered.
+                Selecting first available ('%s')", polygon_name)
+            }
+        }
+    }
+
+    all_p <- identical(polygon_name, ":all:")
+    missing_p <- polygon_name[!polygon_name %in% potential_names]
+    if (length(missing_p) > 0L && !all_p) {
+        stop(wrap_txtf(
+            "No polygon information with name(s): '%s'",
+            paste(missing_p, collapse = "', '"),
+            errWidth = TRUE
+        ), call. = FALSE)
+    }
+
+    if (!all_p) slotdata <- slotdata[polygon_name]
+
+    names(slotdata) <- NULL
+    out <- lapply(slotdata, function(x) {
+        if (isTRUE(return_giottoPolygon)) return(x)
+        if (!is.null(polygon_overlap)) {
+            ovlp_data <- slot(x, "overlaps")
+            potential_overlaps <- names(ovlp_data)
+            if (!polygon_overlap %in% potential_overlaps) {
+                stop(wrap_txtf(
+                    "There is no polygon overlap information with name",
+                    polygon_overlap,
+                    errWidth = TRUE
+                ), call. = FALSE)
+            }
+            return(ovlp_data[[polygon_overlap]])
+        }
+        x[] # poly geom
+    })
+    if (isTRUE(simplify)) out <- .simplify_list(out)
+    out
 }
+
+
+
+
+
 
 
 
@@ -3553,24 +3098,6 @@ getFeatureInfo <- function(gobject = gobject,
 
 
 
-#' @description Get list of all feature information
-#' @keywords internal
-#' @return list of giottoPoints or SpatVector depending on return_giottoPoints
-#' param
-#' @noRd
-get_feature_info_list <- function(gobject,
-    return_giottoPoints = TRUE) {
-    assert_giotto(gobject)
-
-    data_list <- slot(gobject, "feat_info")
-
-    # return objects
-    if (isTRUE(return_giottoPoints)) {
-        return(data_list)
-    } else {
-        return(lapply(data_list, `[`))
-    }
-}
 
 
 
@@ -3721,70 +3248,6 @@ setFeatureInfo <- function(gobject,
 #' @param enrichm_name name of spatial enrichment results. Default "DWLS"
 #' @returns spatEnrObj or data.table with fractions
 #' @noRd
-get_spatial_enrichment <- function(gobject,
-    spat_unit = NULL,
-    feat_type = NULL,
-    enrichm_name = "DWLS",
-    output = c("spatEnrObj", "data.table"),
-    copy_obj = TRUE,
-    set_defaults = TRUE) {
-    output <- match.arg(output, choices = c("spatEnrObj", "data.table"))
-
-    # Set feat_type and spat_unit
-    if (isTRUE(set_defaults)) {
-        .set_default_nesting(gobject, spat_unit, feat_type)
-    }
-
-    # spatial locations
-    # if NULL (not given) and spatial locations have been added, then
-    # use first one if NULL (not given) and spatial locations have NOT been
-    # added, then keep NULL
-    if (is.null(enrichm_name)) {
-        if (!is.null(gobject@spatial_enrichment)) {
-            enrichm_name <- list_spatial_enrichments_names(gobject,
-                spat_unit = spat_unit,
-                feat_type = feat_type
-            )[[1]]
-        } else {
-            enrichm_name <- NULL
-            wrap_msg("No spatial enrichment results have been found")
-            return(NULL)
-        }
-    }
-
-
-    potential_names <- list_spatial_enrichments_names(gobject,
-        spat_unit = spat_unit,
-        feat_type = feat_type
-    )
-
-    if (is.null(potential_names)) {
-        stop(wrap_txt(sprintf(
-            "No spatial enrichments found for spat_unit: %s and feat_type: %s",
-            spat_unit, feat_type
-        )))
-    }
-
-    if (enrichm_name %in% potential_names) {
-        enr_res <- gobject@spatial_enrichment[[spat_unit]][[
-            feat_type
-        ]][[enrichm_name]]
-
-        if (isTRUE(copy_obj)) enr_res[] <- data.table::copy(enr_res[])
-
-        if (output == "spatEnrObj") {
-            return(enr_res)
-        } else if (output == "data.table") {
-            return(enr_res[])
-        }
-    } else {
-        stop(
-            "The spatial enrichment result with name ", "'", enrichm_name,
-            "'", " can not be found \n"
-        )
-    }
-}
-
 #' @title Get spatial enrichment
 #' @name getSpatialEnrichment
 #' @description Function to get a spatial enrichment data.table
@@ -3805,18 +3268,51 @@ getSpatialEnrichment <- function(gobject,
     output = c("spatEnrObj", "data.table"),
     copy_obj = TRUE,
     set_defaults = TRUE) {
-    # Pass to internal function
-    enr_res <- get_spatial_enrichment(
-        gobject = gobject,
+    output <- match.arg(output, choices = c("spatEnrObj", "data.table"))
+
+    if (isTRUE(set_defaults)) {
+        .set_default_nesting(gobject, spat_unit, feat_type)
+    }
+
+    # Fall back to first available result if no name supplied
+    if (is.null(name)) {
+        if (!is.null(gobject@spatial_enrichment)) {
+            name <- list_spatial_enrichments_names(gobject,
+                spat_unit = spat_unit,
+                feat_type = feat_type
+            )[[1]]
+        } else {
+            wrap_msg("No spatial enrichment results have been found")
+            return(NULL)
+        }
+    }
+
+    potential_names <- list_spatial_enrichments_names(gobject,
         spat_unit = spat_unit,
-        feat_type = feat_type,
-        enrichm_name = name,
-        output = output,
-        copy_obj = copy_obj,
-        set_defaults = set_defaults
+        feat_type = feat_type
     )
 
-    return(enr_res)
+    if (is.null(potential_names)) {
+        stop(wrap_txt(sprintf(
+            "No spatial enrichments found for spat_unit: %s and feat_type: %s",
+            spat_unit, feat_type
+        )))
+    }
+
+    if (!name %in% potential_names) {
+        stop(
+            "The spatial enrichment result with name ", "'", name,
+            "'", " can not be found \n"
+        )
+    }
+
+    enr_res <- gobject@spatial_enrichment[[spat_unit]][[
+        feat_type]][[name]]
+
+    if (isTRUE(copy_obj)) enr_res[] <- data.table::copy(enr_res[])
+
+    if (output == "spatEnrObj") return(enr_res)
+    if (output == "data.table") return(enr_res[])
 }
 
 
@@ -4122,18 +3618,6 @@ getGiottoImage <- function(gobject,
 
 
 
-# TODO cleanup image_type param
-#' @description Get list of all giottoImages
-#' @keywords internal
-#' @noRd
-get_giotto_image_list <- function(gobject,
-    image_type = NULL) {
-    checkmate::assert_class(gobject, "giotto")
-
-    return(
-        slot(gobject, "images")
-    )
-}
 
 
 

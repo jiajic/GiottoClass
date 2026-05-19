@@ -1634,10 +1634,10 @@ createMetafeats <- function(gobject,
     avail_sl <- list_spatial_locations(gobject)
     if (!is.null(avail_sl)) {
         for (sl_i in seq(nrow(avail_sl))) {
-            sl <- get_spatial_locations(
+            sl <- getSpatialLocations(
                 gobject = gobject,
                 spat_unit = avail_sl[sl_i, spat_unit],
-                spat_loc_name = avail_sl[sl_i, name],
+                name = avail_sl[sl_i, name],
                 output = "spatLocsObj",
                 copy_obj = FALSE
             )
@@ -1657,11 +1657,11 @@ createMetafeats <- function(gobject,
     avail_se <- list_spatial_enrichments(gobject)
     if (!is.null(avail_se)) {
         for (se_i in seq(nrow(avail_se))) {
-            se <- get_spatial_enrichment(
+            se <- getSpatialEnrichment(
                 gobject = gobject,
                 spat_unit = avail_se[se_i, spat_unit],
                 feat_type = avail_se[se_i, feat_type],
-                enrichm_name = avail_se[se_i, name],
+                name = avail_se[se_i, name],
                 output = "spatEnrObj",
                 copy_obj = FALSE
             )
@@ -1681,7 +1681,7 @@ createMetafeats <- function(gobject,
     avail_sn <- list_spatial_networks(gobject)
     if (!is.null(avail_sn)) {
         for (sn_i in seq(nrow(avail_sn))) {
-            sn <- get_spatialNetwork(
+            sn <- getSpatialNetwork(
                 gobject = gobject,
                 spat_unit = avail_sn[sn_i, spat_unit],
                 name = avail_sn[sn_i, name],

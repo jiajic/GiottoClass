@@ -388,10 +388,10 @@ addGiottoImageMG <- function(gobject,
                 sum(im@minmax == c(10, 0, 10, 0)) == 4) {
                 if (!is.null(spat_loc_name)) { # A check for the first
                     # available spatloc was already done
-                    spatlocs <- get_spatial_locations(
+                    spatlocs <- getSpatialLocations(
                         gobject = gobject,
                         spat_unit = spat_unit,
-                        spat_loc_name = spat_loc_name
+                        name = spat_loc_name
                     )
 
                     # Find spatial minmax values
@@ -1328,10 +1328,10 @@ convertGiottoLargeImageToMG <- function(gobject = NULL,
             current_ext$ymin
         )
     } else if (!is.null(spat_loc_name)) {
-        spatial_locs <- get_spatial_locations(
+        spatial_locs <- getSpatialLocations(
             gobject = gobject,
             spat_unit = spat_unit,
-            spat_loc_name = spat_loc_name
+            name = spat_loc_name
         )
         x_range <- range(spatial_locs$sdimx)
         y_range <- range(spatial_locs$sdimy)

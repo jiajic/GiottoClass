@@ -3170,10 +3170,10 @@ createGiottoImage <- function(gobject = NULL,
     # generation
     if (!is.null(gobject)) {
         # Get spatial locations (or automatically take first available)
-        spatlocs <- get_spatial_locations(
+        spatlocs <- getSpatialLocations(
             gobject = gobject,
             spat_unit = spat_unit,
-            spat_loc_name = spat_loc_name,
+            name = spat_loc_name,
             copy_obj = FALSE,
             output = "data.table"
         )

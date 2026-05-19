@@ -773,10 +773,10 @@ joinGiottoObjects <- function(gobject_list,
 
     for (slObj_i in seq(nrow(available_locs))) {
         sl_list <- lapply(updated_object_list, function(gobj) {
-            get_spatial_locations(
+            getSpatialLocations(
                 gobject = gobj,
                 spat_unit = available_locs$spat_unit[[slObj_i]],
-                spat_loc_name = available_locs$name[[slObj_i]],
+                name = available_locs$name[[slObj_i]],
                 output = "spatLocsObj",
                 copy_obj = FALSE
             )
