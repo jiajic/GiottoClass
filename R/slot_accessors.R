@@ -460,7 +460,7 @@ setGeneric("getCellMetadata",
 
 #' @rdname getCellMetadata
 #' @export
-setMethod("getCellMetadata", signature("giotto"), function(gobject,
+setMethod("getCellMetadata", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     output = c("cellMetaObj", "data.table"),
@@ -517,7 +517,7 @@ setGeneric("setCellMetadata",
 
 #' @rdname setCellMetadata
 #' @export
-setMethod("setCellMetadata", signature("giotto"), function(gobject,
+setMethod("setCellMetadata", signature("gAny"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -677,7 +677,7 @@ setGeneric("getFeatureMetadata",
 
 #' @rdname getFeatureMetadata
 #' @export
-setMethod("getFeatureMetadata", signature("giotto"), function(gobject,
+setMethod("getFeatureMetadata", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     output = c("featMetaObj", "data.table"),
@@ -732,7 +732,7 @@ setGeneric("setFeatureMetadata",
 
 #' @rdname setFeatureMetadata
 #' @export
-setMethod("setFeatureMetadata", signature("giotto"), function(gobject,
+setMethod("setFeatureMetadata", signature("gAny"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -886,7 +886,7 @@ setGeneric("getExpression",
 
 #' @rdname getExpression
 #' @export
-setMethod("getExpression", signature("giotto"), function(
+setMethod("getExpression", signature("gAny"), function(
         gobject,
         values = NULL,
         spat_unit = NULL,
@@ -1004,7 +1004,7 @@ setGeneric("setExpression",
 
 #' @rdname setExpression
 #' @export
-setMethod("setExpression", signature("giotto"), function(gobject,
+setMethod("setExpression", signature("gAny"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -1230,7 +1230,7 @@ setGeneric("setMultiomics",
 
 #' @rdname setMultiomics
 #' @export
-setMethod("setMultiomics", signature("giotto"), function(gobject,
+setMethod("setMultiomics", signature("gAny"), function(gobject,
     result,
     spat_unit = NULL,
     feat_type = NULL,
@@ -1321,7 +1321,7 @@ setGeneric("getMultiomics",
 
 #' @rdname getMultiomics
 #' @export
-setMethod("getMultiomics", signature("giotto"), function(gobject,
+setMethod("getMultiomics", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     integration_method = "WNN",
@@ -1662,7 +1662,7 @@ setGeneric("getDimReduction",
 
 #' @rdname getDimReduction
 #' @export
-setMethod("getDimReduction", signature("giotto"), function(gobject,
+setMethod("getDimReduction", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     reduction = c("cells", "feats"),
@@ -1755,7 +1755,7 @@ setGeneric("setDimReduction",
 
 #' @rdname setDimReduction
 #' @export
-setMethod("setDimReduction", signature("giotto"), function(gobject,
+setMethod("setDimReduction", signature("gAny"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -1935,7 +1935,7 @@ setGeneric("getNearestNetwork",
 
 #' @rdname getNearestNetwork
 #' @export
-setMethod("getNearestNetwork", signature("giotto"), function(gobject,
+setMethod("getNearestNetwork", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     nn_type = NULL,
@@ -2038,7 +2038,7 @@ setGeneric("setNearestNetwork",
 
 #' @rdname setNearestNetwork
 #' @export
-setMethod("setNearestNetwork", signature("giotto"), function(gobject,
+setMethod("setNearestNetwork", signature("gAny"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -3137,7 +3137,7 @@ setGeneric("getSpatialEnrichment",
 
 #' @rdname getSpatialEnrichment
 #' @export
-setMethod("getSpatialEnrichment", signature("giotto"), function(gobject,
+setMethod("getSpatialEnrichment", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     name = "DWLS",
@@ -3220,7 +3220,7 @@ setGeneric("setSpatialEnrichment",
 
 #' @rdname setSpatialEnrichment
 #' @export
-setMethod("setSpatialEnrichment", signature("giotto"), function(gobject,
+setMethod("setSpatialEnrichment", signature("gAny"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
