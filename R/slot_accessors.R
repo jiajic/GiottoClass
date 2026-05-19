@@ -460,7 +460,7 @@ setGeneric("getCellMetadata",
 
 #' @rdname getCellMetadata
 #' @export
-setMethod("getCellMetadata", signature("gAny"), function(gobject,
+setMethod("getCellMetadata", signature("giotto"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     output = c("cellMetaObj", "data.table"),
@@ -517,7 +517,7 @@ setGeneric("setCellMetadata",
 
 #' @rdname setCellMetadata
 #' @export
-setMethod("setCellMetadata", signature("gAny"), function(gobject,
+setMethod("setCellMetadata", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -547,7 +547,9 @@ setMethod("setCellMetadata", signature("gAny"), function(gobject,
             For raw or external data, please first use readCellMetadata()"))
     }
 
-    # List input: validate items and iterate via self-recursion
+    # List input: validate items and iterate via self-recursion. Each item is
+    # set with initialize = FALSE; a single initialize() runs after the loop to
+    # avoid quadratic init and to prevent re-entrancy issues under testthat.
     if (inherits(x, "list")) {
         if (!all(vapply(x, inherits, "cellMetaObj", FUN.VALUE = logical(1L)))) {
             stop(wrap_txt("only cellMetaObj or lists of cellMetaObj accepted.
@@ -561,9 +563,10 @@ setMethod("setCellMetadata", signature("gAny"), function(gobject,
                 feat_type = feat_type,
                 provenance = provenance,
                 verbose = verbose,
-                initialize = initialize
+                initialize = FALSE
             )
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -674,7 +677,7 @@ setGeneric("getFeatureMetadata",
 
 #' @rdname getFeatureMetadata
 #' @export
-setMethod("getFeatureMetadata", signature("gAny"), function(gobject,
+setMethod("getFeatureMetadata", signature("giotto"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     output = c("featMetaObj", "data.table"),
@@ -729,7 +732,7 @@ setGeneric("setFeatureMetadata",
 
 #' @rdname setFeatureMetadata
 #' @export
-setMethod("setFeatureMetadata", signature("gAny"), function(gobject,
+setMethod("setFeatureMetadata", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -749,7 +752,8 @@ setMethod("setFeatureMetadata", signature("gAny"), function(gobject,
             For raw or external data, please first use readFeatMetadata()"))
     }
 
-    # List input: validate items and iterate via self-recursion
+    # List input: validate items and iterate via self-recursion. Each item is
+    # set with initialize = FALSE; a single initialize() runs after the loop.
     if (inherits(x, "list")) {
         if (!all(vapply(x, inherits, "featMetaObj", FUN.VALUE = logical(1L)))) {
             stop(wrap_txt("only featMetaObj or lists of featMetaObj accepted.
@@ -763,9 +767,10 @@ setMethod("setFeatureMetadata", signature("gAny"), function(gobject,
                 feat_type = feat_type,
                 provenance = provenance,
                 verbose = verbose,
-                initialize = initialize
+                initialize = FALSE
             )
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -881,7 +886,7 @@ setGeneric("getExpression",
 
 #' @rdname getExpression
 #' @export
-setMethod("getExpression", signature("gAny"), function(
+setMethod("getExpression", signature("giotto"), function(
         gobject,
         values = NULL,
         spat_unit = NULL,
@@ -999,7 +1004,7 @@ setGeneric("setExpression",
 
 #' @rdname setExpression
 #' @export
-setMethod("setExpression", signature("gAny"), function(gobject,
+setMethod("setExpression", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -1035,7 +1040,7 @@ setMethod("setExpression", signature("gAny"), function(gobject,
         }
         base_args <- list(
             verbose = verbose,
-            initialize = initialize
+            initialize = FALSE
         )
         if (!nospec_unit) base_args$spat_unit <- spat_unit
         if (!nospec_feat) base_args$feat_type <- feat_type
@@ -1047,6 +1052,7 @@ setMethod("setExpression", signature("gAny"), function(gobject,
                 base_args
             ))
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -1224,7 +1230,7 @@ setGeneric("setMultiomics",
 
 #' @rdname setMultiomics
 #' @export
-setMethod("setMultiomics", signature("gAny"), function(gobject,
+setMethod("setMultiomics", signature("giotto"), function(gobject,
     result,
     spat_unit = NULL,
     feat_type = NULL,
@@ -1315,7 +1321,7 @@ setGeneric("getMultiomics",
 
 #' @rdname getMultiomics
 #' @export
-setMethod("getMultiomics", signature("gAny"), function(gobject,
+setMethod("getMultiomics", signature("giotto"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     integration_method = "WNN",
@@ -1539,7 +1545,7 @@ setSpatialLocations <- function(gobject,
         }
         base_args <- list(
             verbose = verbose,
-            initialize = initialize
+            initialize = FALSE
         )
         if (!nospec_unit) base_args$spat_unit <- spat_unit
         if (!nospec_name) base_args$name <- name
@@ -1550,6 +1556,7 @@ setSpatialLocations <- function(gobject,
                 base_args
             ))
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -1655,7 +1662,7 @@ setGeneric("getDimReduction",
 
 #' @rdname getDimReduction
 #' @export
-setMethod("getDimReduction", signature("gAny"), function(gobject,
+setMethod("getDimReduction", signature("giotto"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     reduction = c("cells", "feats"),
@@ -1748,7 +1755,7 @@ setGeneric("setDimReduction",
 
 #' @rdname setDimReduction
 #' @export
-setMethod("setDimReduction", signature("gAny"), function(gobject,
+setMethod("setDimReduction", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -1796,7 +1803,7 @@ setMethod("setDimReduction", signature("gAny"), function(gobject,
         }
         base_args <- list(
             verbose = verbose,
-            initialize = initialize
+            initialize = FALSE
         )
         if (!nospec_unit) base_args$spat_unit <- spat_unit
         if (!nospec_feat) base_args$feat_type <- feat_type
@@ -1810,6 +1817,7 @@ setMethod("setDimReduction", signature("gAny"), function(gobject,
                 base_args
             ))
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -1927,7 +1935,7 @@ setGeneric("getNearestNetwork",
 
 #' @rdname getNearestNetwork
 #' @export
-setMethod("getNearestNetwork", signature("gAny"), function(gobject,
+setMethod("getNearestNetwork", signature("giotto"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     nn_type = NULL,
@@ -2030,7 +2038,7 @@ setGeneric("setNearestNetwork",
 
 #' @rdname setNearestNetwork
 #' @export
-setMethod("setNearestNetwork", signature("gAny"), function(gobject,
+setMethod("setNearestNetwork", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -2076,7 +2084,7 @@ setMethod("setNearestNetwork", signature("gAny"), function(gobject,
         }
         base_args <- list(
             verbose = verbose,
-            initialize = initialize
+            initialize = FALSE
         )
         if (!nospec_unit) base_args$spat_unit <- spat_unit
         if (!nospec_feat) base_args$feat_type <- feat_type
@@ -2089,6 +2097,7 @@ setMethod("setNearestNetwork", signature("gAny"), function(gobject,
                 base_args
             ))
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -2367,7 +2376,7 @@ setSpatialNetwork <- function(gobject,
         }
         base_args <- list(
             verbose = verbose,
-            initialize = initialize
+            initialize = FALSE
         )
         if (!nospec_unit) base_args$spat_unit <- spat_unit
         if (!nospec_name) base_args$name <- name
@@ -2378,6 +2387,7 @@ setSpatialNetwork <- function(gobject,
                 base_args
             ))
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -2795,7 +2805,7 @@ setPolygonInfo <- function(gobject,
         base_args <- list(
             centroids_to_spatlocs = centroids_to_spatlocs,
             verbose = verbose,
-            initialize = initialize
+            initialize = FALSE
         )
         if (!nospec_name) base_args$name <- name
         for (obj_i in seq_along(x)) {
@@ -2804,6 +2814,7 @@ setPolygonInfo <- function(gobject,
                 base_args
             ))
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -2870,11 +2881,10 @@ setPolygonInfo <- function(gobject,
         # locsObj's @name ("raw") is used.
         sl_args <- list(
             gobject = gobject, x = locsObj,
-            verbose = verbose, initialize = initialize
+            verbose = verbose, initialize = FALSE
         )
         if (!nospec_name) sl_args$spat_unit <- name
         gobject <- do.call(setSpatialLocations, sl_args)
-        return(gobject)
     }
 
     if (isTRUE(initialize)) return(initialize(gobject))
@@ -3018,9 +3028,10 @@ setFeatureInfo <- function(gobject,
                 x = x[[obj_i]],
                 feat_type = feat_type,
                 verbose = verbose,
-                initialize = initialize
+                initialize = FALSE
             )
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
@@ -3126,7 +3137,7 @@ setGeneric("getSpatialEnrichment",
 
 #' @rdname getSpatialEnrichment
 #' @export
-setMethod("getSpatialEnrichment", signature("gAny"), function(gobject,
+setMethod("getSpatialEnrichment", signature("giotto"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     name = "DWLS",
@@ -3209,7 +3220,7 @@ setGeneric("setSpatialEnrichment",
 
 #' @rdname setSpatialEnrichment
 #' @export
-setMethod("setSpatialEnrichment", signature("gAny"), function(gobject,
+setMethod("setSpatialEnrichment", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     feat_type = NULL,
@@ -3259,7 +3270,7 @@ setMethod("setSpatialEnrichment", signature("gAny"), function(gobject,
         }
         base_args <- list(
             verbose = verbose,
-            initialize = initialize
+            initialize = FALSE
         )
         if (!nospec_unit) base_args$spat_unit <- spat_unit
         if (!nospec_feat) base_args$feat_type <- feat_type
@@ -3271,6 +3282,7 @@ setMethod("setSpatialEnrichment", signature("gAny"), function(gobject,
                 base_args
             ))
         }
+        if (isTRUE(initialize)) return(initialize(gobject))
         return(gobject)
     }
 
