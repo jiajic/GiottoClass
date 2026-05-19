@@ -1389,7 +1389,12 @@ setMethod("getMultiomics", signature("gAny"), function(gobject,
 #'
 #' getSpatialLocations(g)
 #' @export
-getSpatialLocations <- function(gobject,
+setGeneric("getSpatialLocations",
+    function(gobject, ...) standardGeneric("getSpatialLocations"))
+
+#' @rdname getSpatialLocations
+#' @export
+setMethod("getSpatialLocations", signature("giotto"), function(gobject,
     spat_unit = NULL,
     name = NULL,
     output = c("spatLocsObj", "data.table"),
@@ -1454,7 +1459,7 @@ getSpatialLocations <- function(gobject,
     })
     if (isTRUE(simplify)) out <- .simplify_list(out)
     out
-}
+})
 
 
 
@@ -1499,7 +1504,12 @@ getSpatialLocations <- function(gobject,
 #'
 #' setSpatialLocations(gobject = g, x = createSpatLocsObj(sl, name = "raw"))
 #' @export
-setSpatialLocations <- function(gobject,
+setGeneric("setSpatialLocations",
+    function(gobject, ...) standardGeneric("setSpatialLocations"))
+
+#' @rdname setSpatialLocations
+#' @export
+setMethod("setSpatialLocations", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     name = "raw",
@@ -1507,7 +1517,6 @@ setSpatialLocations <- function(gobject,
     verbose = TRUE,
     initialize = TRUE,
     ...) {
-    checkmate::assert_class(gobject, "giotto")
     if (!methods::hasArg(x)) {
         stop(wrap_txt("x (data to set) param must be given"))
     }
@@ -1609,7 +1618,7 @@ setSpatialLocations <- function(gobject,
     gobject@spatial_locs[[spat_unit]][[name]] <- x
     if (isTRUE(initialize)) return(initialize(gobject))
     gobject
-}
+})
 
 
 
@@ -2207,7 +2216,12 @@ setMethod("setNearestNetwork", signature("gAny"), function(gobject,
 #'
 #' getSpatialNetwork(g)
 #' @export
-getSpatialNetwork <- function(gobject,
+setGeneric("getSpatialNetwork",
+    function(gobject, ...) standardGeneric("getSpatialNetwork"))
+
+#' @rdname getSpatialNetwork
+#' @export
+setMethod("getSpatialNetwork", signature("giotto"), function(gobject,
     spat_unit = NULL,
     name = NULL,
     output = c(
@@ -2299,7 +2313,7 @@ getSpatialNetwork <- function(gobject,
     })
     if (isTRUE(simplify)) out <- .simplify_list(out)
     out
-}
+})
 
 
 
@@ -2329,7 +2343,12 @@ getSpatialNetwork <- function(gobject,
 #'
 #' setSpatialNetwork(gobject = g, x = spatnet)
 #' @export
-setSpatialNetwork <- function(gobject,
+setGeneric("setSpatialNetwork",
+    function(gobject, ...) standardGeneric("setSpatialNetwork"))
+
+#' @rdname setSpatialNetwork
+#' @export
+setMethod("setSpatialNetwork", signature("giotto"), function(gobject,
     x,
     spat_unit = NULL,
     name = NULL,
@@ -2337,7 +2356,6 @@ setSpatialNetwork <- function(gobject,
     verbose = TRUE,
     initialize = TRUE,
     ...) {
-    assert_giotto(gobject)
     if (!methods::hasArg(x)) {
         stop(wrap_txt("x param (data to set) must be given"))
     }
@@ -2441,7 +2459,7 @@ setSpatialNetwork <- function(gobject,
     slot(gobject, "spatial_network")[[spat_unit]][[name]] <- x
     if (isTRUE(initialize)) return(initialize(gobject))
     gobject
-}
+})
 
 
 
@@ -2662,19 +2680,17 @@ setSpatialGrid <- function(gobject,
 #'
 #' getPolygonInfo(g)
 #' @export
-getPolygonInfo <- function(gobject = NULL,
+setGeneric("getPolygonInfo",
+    function(gobject, ...) standardGeneric("getPolygonInfo"))
+
+#' @rdname getPolygonInfo
+#' @export
+setMethod("getPolygonInfo", signature("giotto"), function(gobject,
     polygon_name = NULL,
     polygon_overlap = NULL,
     return_giottoPolygon = FALSE,
     verbose = TRUE,
     simplify = TRUE) {
-    if (!inherits(gobject, "giotto")) {
-        wrap_msg("Unable to get polygon spatVector from non-Giotto object.")
-        stop(wrap_txt("Please provide a Giotto object to the gobject argument.",
-            errWidth = TRUE
-        ))
-    }
-
     slotdata <- slot(gobject, "spatial_info")
     potential_names <- names(slotdata)
 
@@ -2727,7 +2743,7 @@ getPolygonInfo <- function(gobject = NULL,
     })
     if (isTRUE(simplify)) out <- .simplify_list(out)
     out
-}
+})
 
 
 
@@ -2767,7 +2783,12 @@ getPolygonInfo <- function(gobject = NULL,
 #'
 #' setPolygonInfo(gobject = g, x = polyinfo)
 #' @export
-setPolygonInfo <- function(gobject,
+setGeneric("setPolygonInfo",
+    function(gobject, ...) standardGeneric("setPolygonInfo"))
+
+#' @rdname setPolygonInfo
+#' @export
+setMethod("setPolygonInfo", signature("giotto"), function(gobject,
     x,
     name = "cell",
     centroids_to_spatlocs = FALSE,
@@ -2777,7 +2798,6 @@ setPolygonInfo <- function(gobject,
     # data.table vars
     poly_ID <- y <- NULL
 
-    assert_giotto(gobject)
     if (!methods::hasArg(x)) {
         stop(wrap_txt("x param (data to be set) must be given"))
     }
@@ -2889,7 +2909,7 @@ setPolygonInfo <- function(gobject,
 
     if (isTRUE(initialize)) return(initialize(gobject))
     gobject
-}
+})
 
 
 
@@ -2918,13 +2938,16 @@ setPolygonInfo <- function(gobject,
 #'
 #' getFeatureInfo(g)
 #' @export
-getFeatureInfo <- function(gobject = gobject,
+setGeneric("getFeatureInfo",
+    function(gobject, ...) standardGeneric("getFeatureInfo"))
+
+#' @rdname getFeatureInfo
+#' @export
+setMethod("getFeatureInfo", signature("giotto"), function(gobject,
     feat_type = NULL,
     return_giottoPoints = FALSE,
     set_defaults = TRUE,
     simplify = TRUE) {
-    checkmate::assert_class(gobject, "giotto")
-
     if (isTRUE(set_defaults)) {
         feat_type <- set_default_feat_type(
             gobject = gobject,
@@ -2961,7 +2984,7 @@ getFeatureInfo <- function(gobject = gobject,
     })
     if (isTRUE(simplify)) out <- .simplify_list(out)
     out
-}
+})
 
 
 
@@ -2990,13 +3013,17 @@ getFeatureInfo <- function(gobject = gobject,
 #'
 #' setFeatureInfo(gobject = g, x = featinfo)
 #' @export
-setFeatureInfo <- function(gobject,
+setGeneric("setFeatureInfo",
+    function(gobject, ...) standardGeneric("setFeatureInfo"))
+
+#' @rdname setFeatureInfo
+#' @export
+setMethod("setFeatureInfo", signature("giotto"), function(gobject,
     x,
     feat_type = NULL,
     verbose = TRUE,
     initialize = TRUE,
     ...) {
-    assert_giotto(gobject)
     if (!methods::hasArg(x)) {
         stop(wrap_txt("x param (data to set) must be given"))
     }
@@ -3082,7 +3109,7 @@ setFeatureInfo <- function(gobject,
     gobject@feat_info[[feat_type]] <- x
     if (isTRUE(initialize)) return(initialize(gobject))
     gobject
-}
+})
 
 
 
@@ -3376,16 +3403,14 @@ setMethod("setSpatialEnrichment", signature("gAny"), function(gobject,
 #'
 #' getGiottoImage(gobject = g)
 #' @export
-getGiottoImage <- function(gobject,
+setGeneric("getGiottoImage",
+    function(gobject, ...) standardGeneric("getGiottoImage"))
+
+#' @rdname getGiottoImage
+#' @export
+setMethod("getGiottoImage", signature("giotto"), function(gobject,
     image_type = NULL,
     name = NULL) {
-    if (!inherits(gobject, "giotto")) {
-        wrap_msg("Unable to get Giotto Image from non-Giotto object.")
-        stop(wrap_txt("Please provide a Giotto object to the gobject argument.",
-            errWidth = TRUE
-        ))
-    }
-
     if (identical(name, ":all:")) {
         all_imgs <- gobject@images
         if (length(all_imgs) == 0L) all_imgs <- NULL
@@ -3411,7 +3436,7 @@ getGiottoImage <- function(gobject,
     if (length(g_img) == 1) g_img <- g_img[[1L]]
 
     return(g_img)
-}
+})
 
 
 
@@ -3452,19 +3477,17 @@ getGiottoImage <- function(gobject,
 #' setGiottoImage(g, NULL, name = objName(gimg))
 #' setGiottoImage(gobject = g, image = gimg)
 #' @export
-setGiottoImage <- function(gobject,
+setGeneric("setGiottoImage",
+    function(gobject, ...) standardGeneric("setGiottoImage"))
+
+#' @rdname setGiottoImage
+#' @export
+setMethod("setGiottoImage", signature("giotto"), function(gobject,
     image,
     image_type = NULL,
     name = NULL,
     initialize = FALSE,
     verbose = NULL) {
-    if (!inherits(gobject, "giotto")) {
-        wrap_msg("Unable to set Giotto Image to non-Giotto object.")
-        stop(wrap_txt("Please provide a Giotto object to the gobject argument.",
-            errWidth = TRUE
-        ))
-    }
-
     if (is.null(image)) {
         if (!is.null(name)) { # image removal
             vmsg(.v = verbose, "NULL passed to `image` param
@@ -3501,7 +3524,7 @@ setGiottoImage <- function(gobject,
 
     gobject@images[[name]] <- image
     return(gobject)
-}
+})
 
 
 
