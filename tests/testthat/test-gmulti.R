@@ -110,3 +110,49 @@ test_that("gAny inheritance does not change giotto dispatch", {
     # spatIDs("giotto", ...) still wins
     expect_identical(spatIDs(g), c("c1", "c2", "c3", "c4", "c5"))
 })
+
+
+# Shared-domain accessors promoted to S4 (gAny) ####
+
+test_that("getExpression works identically on giotto via gAny method", {
+    g <- .mk_minimal(5, 4)
+    e <- getExpression(g)
+    expect_s4_class(e, "exprObj")
+    expect_identical(dim(e[]), c(4L, 5L))
+
+    em <- getExpression(g, output = "matrix")
+    expect_true(inherits(em, c("matrix", "Matrix")))
+})
+
+test_that("getExpression on giottoMulti reads from parent's shared slot", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    # parent slot is empty; getExpression should error usefully
+    expect_error(getExpression(mg))
+
+    # populate parent's shared slot, exercising the gAny method's slot read
+    mg@expression <- g1@expression
+    e <- getExpression(mg)
+    expect_s4_class(e, "exprObj")
+    expect_identical(dim(e[]), c(4L, 5L))
+})
+
+test_that("getCellMetadata works identically on giotto via gAny method", {
+    g <- .mk_minimal(5, 4)
+    cm <- getCellMetadata(g)
+    expect_s4_class(cm, "cellMetaObj")
+    expect_identical(nrow(cm[]), 5L)
+})
+
+test_that("getCellMetadata on giottoMulti reads from parent's shared slot", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    # populate both shared slots — set_default_spat_unit reads @expression to
+    # resolve defaults
+    mg@expression <- g1@expression
+    mg@cell_metadata <- g1@cell_metadata
+    cm <- getCellMetadata(mg)
+    expect_s4_class(cm, "cellMetaObj")
+    expect_identical(nrow(cm[]), 5L)
+})
