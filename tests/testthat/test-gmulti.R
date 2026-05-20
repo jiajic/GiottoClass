@@ -128,12 +128,17 @@ test_that("getExpression on giottoMulti reads from parent's shared slot", {
     g1 <- .mk_minimal(5, 4)
     mg <- createGiottoMulti(list(a = g1))
 
-    # parent slot is empty; getExpression should error usefully
-    expect_error(getExpression(mg))
+    # parent slot empty: getExpression falls back to assembling from children
+    # (naive concat with sample::id prefix; see .gm_assemble_expression)
+    e_derived <- getExpression(mg)
+    expect_s4_class(e_derived, "exprObj")
+    expect_identical(dim(e_derived[]), c(4L, 5L))
+    expect_true(all(colnames(e_derived[]) == paste("a", paste0("c", 1:5), sep = "::")))
 
     # populate parent's shared slot. Joint slots are keyed on GLOBAL IDs
     # (sample::id), matching @id_map$cells$global_id; the view filter
-    # expects this contract.
+    # expects this contract. setExpression(mg, joint) is the override path
+    # for integration output.
     e1 <- g1@expression$cell$rna$raw
     mat <- e1[]
     colnames(mat) <- paste("a", colnames(mat), sep = "::")
@@ -504,6 +509,63 @@ test_that("compact trims joint @cell_metadata to the current view", {
     mg3 <- compact(mg2)
     expect_identical(nrow(mg3@cell_metadata$cell$rna[]), 1L)
 })
+
+test_that("getExpression assembles joint matrix from children when empty", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    e <- getExpression(mg)
+    expect_s4_class(e, "exprObj")
+    # 8 cells = 5 + 3, all globally namespaced; 4 features (intersection)
+    expect_identical(dim(e[]), c(4L, 8L))
+    expect_identical(colnames(e[]),
+        c(paste("a", paste0("c", 1:5), sep = "::"),
+          paste("b", paste0("c", 1:3), sep = "::")))
+})
+
+test_that("assembled joint expression respects @id_map view filter", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    mg2 <- subset(mg, cells = c("a::c1", "b::c2"))
+
+    e <- getExpression(mg2)
+    expect_identical(ncol(e[]), 2L)
+    expect_identical(colnames(e[]), c("a::c1", "b::c2"))
+})
+
+test_that("assembly intersects features across children", {
+    g1 <- .mk_minimal(5, 4)
+    # Trim g2's feature panel to 3 features (intersect with g1's 4 → 3 features)
+    m2 <- matrix(0, nrow = 3, ncol = 3)
+    rownames(m2) <- paste0("f", 1:3)
+    colnames(m2) <- paste0("c", 1:3)
+    g2 <- createGiottoObject(expression = m2, verbose = FALSE)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    e <- getExpression(mg)
+    expect_identical(nrow(e[]), 3L)
+    expect_identical(sort(rownames(e[])), paste0("f", 1:3))
+})
+
+test_that("setExpression on giottoMulti overrides assembly", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    # custom joint matrix replacing the naive assembly
+    custom_e <- getExpression(g1)
+    mat <- custom_e[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    # tweak values so we can detect which path returned
+    mat[1, 1] <- 999
+    custom_e[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = custom_e)))
+
+    e <- getExpression(mg)
+    expect_identical(e[][1, 1], 999)
+})
+
 
 test_that("compact leaves children untouched", {
     g1 <- .mk_minimal(5, 4)

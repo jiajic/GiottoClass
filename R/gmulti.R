@@ -621,6 +621,76 @@ setMethod("show", "giottoMulti", function(object) {
     x
 }
 
+#' Assemble a joint expression matrix from children.
+#'
+#' Naive concat: pull each active child's matching exprObj, rename columns to
+#' sample::id, intersect features across children (safe default — avoids
+#' introducing NAs), cbind. The first child's exprObj is used as the metadata
+#' template (spat_unit, feat_type, name) with its matrix replaced.
+#'
+#' Called by `getExpression(giottoMulti, ...)` when `@expression` is empty.
+#' This is the baseline view; integration tools (Harmony, scVI, etc.) overwrite
+#' it via `setExpression(mg, joint)` once they've produced a corrected matrix.
+#' @noRd
+.gm_assemble_expression <- function(gobject, spat_unit, feat_type, values) {
+    children <- .gm_resolve_active(gobject, NULL)
+    if (length(children) == 0L) {
+        stop("giottoMulti has no children to assemble expression from",
+            call. = FALSE)
+    }
+
+    # If values not specified, pick the first name common to all children
+    if (is.null(values)) {
+        avail_per_child <- lapply(children, function(nm) {
+            tryCatch(
+                list_expression_names(gobject@objects[[nm]],
+                    spat_unit = spat_unit, feat_type = feat_type),
+                error = function(e) NULL
+            )
+        })
+        common <- Reduce(intersect, Filter(Negate(is.null), avail_per_child))
+        if (length(common) == 0L) {
+            stop(wrap_txt("No expression matrix name common to all active
+                children of giottoMulti. Specify `values =` explicitly,
+                or run integration and setExpression() the result."),
+                call. = FALSE)
+        }
+        values <- common[[1L]]
+    }
+
+    per_child <- lapply(children, function(nm) {
+        e <- tryCatch(getExpression(gobject@objects[[nm]],
+            spat_unit = spat_unit, feat_type = feat_type, values = values,
+            output = "exprObj", set_defaults = FALSE),
+            error = function(err) NULL)
+        if (is.null(e)) return(NULL)
+        mat <- e[]
+        colnames(mat) <- paste(nm, colnames(mat), sep = "::")
+        list(mat = mat, exprObj = e, name = nm)
+    })
+    per_child <- Filter(Negate(is.null), per_child)
+    if (length(per_child) == 0L) {
+        stop(sprintf(
+            "No child has expression \"%s\" for spat_unit \"%s\" / feat_type \"%s\"",
+            values, spat_unit, feat_type), call. = FALSE)
+    }
+
+    feats_common <- Reduce(intersect,
+        lapply(per_child, function(x) rownames(x$mat)))
+    if (length(feats_common) == 0L) {
+        stop("No features common to all children for this expression set",
+            call. = FALSE)
+    }
+
+    mats <- lapply(per_child, function(x) x$mat[feats_common, , drop = FALSE])
+    joint_mat <- do.call(cbind, mats)
+
+    # Use first child's exprObj as metadata template
+    template <- per_child[[1L]]$exprObj
+    template[] <- joint_mat
+    template
+}
+
 #' Compute a cheap length-signature of each child's ID slots.
 #'
 #' Used by `initialize(giottoMulti)` as a fast-path: if signatures match the
@@ -787,6 +857,42 @@ setMethod(
         }
         ids <- if (isTRUE(local)) m$local_id else m$global_id
         if (isTRUE(uniques)) unique(ids) else ids
+    }
+)
+
+
+# SHARED-DOMAIN OVERRIDES ON giottoMulti ####
+
+#' @rdname getExpression
+#' @export
+setMethod("getExpression", "giottoMulti",
+    function(gobject, values = NULL, spat_unit = NULL, feat_type = NULL,
+             output = c("exprObj", "matrix"), set_defaults = TRUE) {
+        output <- match.arg(output, choices = c("exprObj", "matrix"))
+        if (isTRUE(set_defaults)) {
+            .set_default_nesting(gobject, spat_unit, feat_type)
+        }
+
+        # Joint slot populated for this (spat_unit, feat_type)? Then defer to
+        # the gAny method — it reads from the slot and applies the view filter.
+        joint_avail <- list_expression_names(gobject,
+            spat_unit = spat_unit, feat_type = feat_type)
+        target_values <- if (is.null(values)) {
+            if (length(joint_avail) > 0L) joint_avail[[1L]] else NULL
+        } else values
+        if (!is.null(target_values) && target_values %in% joint_avail) {
+            return(callNextMethod(gobject, values = target_values,
+                spat_unit = spat_unit, feat_type = feat_type,
+                output = output, set_defaults = FALSE))
+        }
+
+        # Joint slot empty — assemble naive joint from children, prefix to
+        # globals, intersect features. Integration output overrides this via
+        # setExpression(mg, ...).
+        e <- .gm_assemble_expression(gobject, spat_unit, feat_type, values)
+        e <- .gm_apply_view(e, gobject)
+        if (output == "matrix") return(e[])
+        e
     }
 )
 
