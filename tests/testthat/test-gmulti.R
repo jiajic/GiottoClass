@@ -690,6 +690,91 @@ test_that("show(mg) adds a 'shared' line when child panels differ", {
     expect_false(any(grepl("shared:", out_eq)))
 })
 
+test_that("mg[i] subsets children, returning a smaller giottoMulti", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    g3 <- .mk_minimal(2, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2, c = g3))
+
+    sub_named <- mg[c("a", "c")]
+    expect_s4_class(sub_named, "giottoMulti")
+    expect_identical(names(sub_named), c("a", "c"))
+    expect_identical(spatIDs(sub_named),
+        c(paste0("a::c", 1:5), paste0("c::c", 1:2)))
+
+    sub_int <- mg[c(1, 3)]
+    expect_identical(names(sub_int), c("a", "c"))
+
+    expect_error(mg["nope"], "unknown child")
+})
+
+test_that("names(mg) <- renames children and refreshes id_map / access", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    names(mg) <- c("x", "y")
+    expect_identical(names(mg), c("x", "y"))
+    expect_identical(mg@access$object, c("x", "y"))
+    expect_identical(sort(unique(mg@id_map$cells$object)), c("x", "y"))
+    expect_identical(spatIDs(mg),
+        c(paste0("x::c", 1:5), paste0("y::c", 1:3)))
+
+    expect_error(names(mg) <- c("a", "a"), "unique")
+    expect_error(names(mg) <- "a", "length")
+})
+
+test_that("names(mg) <- refuses when joint shared slots are populated", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    # populate joint @expression with globally-keyed colnames
+    e <- getExpression(g1)
+    mat <- e[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = e)))
+
+    expect_error(names(mg) <- "renamed", "populated")
+
+    # clearing the joint slot allows the rename
+    mg@expression <- NULL
+    names(mg) <- "renamed"
+    expect_identical(names(mg), "renamed")
+})
+
+test_that("pDataDT / fDataDT work on giottoMulti via assembly fallback", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    pd <- pDataDT(mg)
+    expect_s3_class(pd, "data.table")
+    expect_identical(nrow(pd), 8L)
+    expect_identical(sort(pd$cell_ID),
+        sort(c(paste0("a::c", 1:5), paste0("b::c", 1:3))))
+
+    fd <- fDataDT(mg)
+    expect_s3_class(fd, "data.table")
+    expect_identical(nrow(fd), 4L)
+    expect_identical(sort(fd$feat_ID), paste0("f", 1:4))
+})
+
+test_that("activeSpatUnit / activeFeatType return per-child vectors", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    su <- activeSpatUnit(mg)
+    expect_named(su, c("a", "b"))
+    expect_true(all(su == "cell"))
+
+    ft <- activeFeatType(mg)
+    expect_named(ft, c("a", "b"))
+    expect_true(all(ft == "rna"))
+})
+
+
 test_that("show(mg) reports active scope only when narrower than all", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)

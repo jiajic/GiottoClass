@@ -287,6 +287,83 @@ setReplaceMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing", va
     }
 )
 
+#' @noRd
+setMethod("[", signature(x = "giottoMulti", i = "ANY"),
+    function(x, i, j, ..., drop = TRUE) {
+        # Select children by name or integer index; return a new giottoMulti
+        # with the chosen subset. Joint shared slots are NOT rewritten — the
+        # caller can subset/compact if they want them aligned.
+        sel <- if (is.character(i)) {
+            bad <- setdiff(i, names(x))
+            if (length(bad) > 0L) {
+                stop("unknown child(ren): ",
+                    paste(bad, collapse = ", "), call. = FALSE)
+            }
+            i
+        } else {
+            names(x)[i]
+        }
+        out <- x
+        out@objects <- x@objects[sel]
+        out@access <- x@access[x@access$object %in% sel, , drop = FALSE]
+        out@active <- if (any(is.na(x@active))) {
+            NA_character_
+        } else intersect(x@active, sel)
+        # rebuild id_map for the new child set
+        rebuildMaps(out)
+    }
+)
+
+#' @noRd
+setReplaceMethod("names", signature(x = "giottoMulti", value = "character"),
+    function(x, value) {
+        old_names <- names(x@objects)
+        if (length(value) != length(old_names)) {
+            stop(sprintf(
+                "names() <- requires length %d (got %d)",
+                length(old_names), length(value)
+            ), call. = FALSE)
+        }
+        if (anyDuplicated(value)) {
+            stop("child names must be unique", call. = FALSE)
+        }
+
+        # Joint shared slots encode child names inside their globals
+        # (sample::id colnames, cell_ID values, etc.). Renaming would
+        # silently break those references — the view filter would then
+        # see no overlap and return zero rows. Refuse rather than
+        # corrupt. User must populate joint state AFTER renaming, or
+        # drop the joint state first (setExpression(mg, NULL), etc.).
+        populated_slots <- c("expression", "cell_metadata", "feat_metadata",
+            "dimension_reduction", "nn_network", "spatial_enrichment")
+        has_joint <- vapply(populated_slots, function(s) {
+            v <- slot(x, s)
+            !is.null(v) && length(v) > 0L
+        }, logical(1L))
+        if (any(has_joint)) {
+            stop(wrap_txt(sprintf(
+                "Cannot rename children of a giottoMulti with populated
+                joint shared slots: %s. Joint content is keyed on the
+                current child names; renaming would invalidate it
+                silently. Rename children before populating joint state,
+                or drop the joint slots first (e.g.
+                setExpression(mg, NULL, ...) per entry).",
+                paste(names(has_joint)[has_joint], collapse = ", ")
+            )), call. = FALSE)
+        }
+
+        name_map <- setNames(value, old_names)
+        names(x@objects) <- value
+        x@access$object <- unname(name_map[x@access$object])
+        if (!any(is.na(x@active))) {
+            x@active <- unname(name_map[x@active])
+        }
+        # id_map embeds the old names in object column AND in global_id;
+        # full rebuild is the simplest correct path.
+        rebuildMaps(x)
+    }
+)
+
 
 # REBUILD / REALIGN ####
 
@@ -802,6 +879,94 @@ setMethod("show", "giottoMulti", function(object) {
     template
 }
 
+#' Assemble joint cell metadata from children's per-child cell metadata.
+#'
+#' Pulls each child's cellMetaObj for the resolved nesting, prefixes cell_ID
+#' to globals (sample::id), and rbinds. Columns are intersected across
+#' children to avoid NA inflation (the common case has matching schema; in
+#' the worst case the intersection at minimum has cell_ID).
+#'
+#' Called by `getCellMetadata(giottoMulti, ...)` when the joint slot is
+#' empty. The first child's cellMetaObj is the metadata template.
+#' @noRd
+.gm_assemble_cell_metadata <- function(gobject, spat_unit, feat_type) {
+    children <- .gm_resolve_active(gobject, NULL)
+    user_su <- !is.null(spat_unit)
+    user_ft <- !is.null(feat_type)
+
+    per_child <- lapply(children, function(nm) {
+        g <- gobject@objects[[nm]]
+        su <- if (user_su) spat_unit
+            else tryCatch(set_default_spat_unit(g),
+                error = function(e) NA_character_)
+        ft <- if (user_ft) feat_type
+            else tryCatch(set_default_feat_type(g, spat_unit = su),
+                error = function(e) NA_character_)
+        cm <- tryCatch(getCellMetadata(g, spat_unit = su, feat_type = ft,
+            output = "cellMetaObj", set_defaults = FALSE),
+            error = function(e) NULL)
+        if (is.null(cm)) return(NULL)
+        dt <- data.table::copy(cm[])
+        dt[, cell_ID := paste(nm, cell_ID, sep = "::")]
+        list(cm = cm, dt = dt)
+    })
+    per_child <- Filter(Negate(is.null), per_child)
+    if (length(per_child) == 0L) {
+        stop("No child has cell metadata for the requested nesting",
+            call. = FALSE)
+    }
+
+    cols_common <- Reduce(intersect, lapply(per_child, function(x) names(x$dt)))
+    dts <- lapply(per_child, function(x) x$dt[, cols_common, with = FALSE])
+    joint_dt <- data.table::rbindlist(dts, use.names = TRUE)
+
+    template <- per_child[[1L]]$cm
+    template[] <- joint_dt
+    template
+}
+
+#' Assemble joint feature metadata from children's per-child feat metadata.
+#'
+#' Parallel to .gm_assemble_cell_metadata. Feature IDs are passthrough
+#' (no global namespacing), so the rbind happens directly; rows for the
+#' same feature across children are deduplicated by `feat_ID` (first
+#' child's row wins — typical assumption is shared panel).
+#' @noRd
+.gm_assemble_feat_metadata <- function(gobject, spat_unit, feat_type) {
+    children <- .gm_resolve_active(gobject, NULL)
+    user_su <- !is.null(spat_unit)
+    user_ft <- !is.null(feat_type)
+
+    per_child <- lapply(children, function(nm) {
+        g <- gobject@objects[[nm]]
+        su <- if (user_su) spat_unit
+            else tryCatch(set_default_spat_unit(g),
+                error = function(e) NA_character_)
+        ft <- if (user_ft) feat_type
+            else tryCatch(set_default_feat_type(g, spat_unit = su),
+                error = function(e) NA_character_)
+        fm <- tryCatch(getFeatureMetadata(g, spat_unit = su, feat_type = ft,
+            output = "featMetaObj", set_defaults = FALSE),
+            error = function(e) NULL)
+        if (is.null(fm)) return(NULL)
+        list(fm = fm, dt = data.table::copy(fm[]))
+    })
+    per_child <- Filter(Negate(is.null), per_child)
+    if (length(per_child) == 0L) {
+        stop("No child has feature metadata for the requested nesting",
+            call. = FALSE)
+    }
+
+    cols_common <- Reduce(intersect, lapply(per_child, function(x) names(x$dt)))
+    dts <- lapply(per_child, function(x) x$dt[, cols_common, with = FALSE])
+    joint_dt <- unique(data.table::rbindlist(dts, use.names = TRUE),
+        by = "feat_ID")
+
+    template <- per_child[[1L]]$fm
+    template[] <- joint_dt
+    template
+}
+
 #' Compute a cheap length-signature of each child's ID slots.
 #'
 #' Used by `initialize(giottoMulti)` as a fast-path: if signatures match the
@@ -1017,6 +1182,68 @@ setMethod("getExpression", "giottoMulti",
         e
     }
 )
+
+#' @rdname getCellMetadata
+#' @export
+setMethod("getCellMetadata", "giottoMulti", function(gobject,
+    spat_unit = NULL,
+    feat_type = NULL,
+    output = c("cellMetaObj", "data.table"),
+    copy_obj = TRUE,
+    set_defaults = TRUE) {
+    output <- match.arg(output, choices = c("cellMetaObj", "data.table"))
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
+    if (isTRUE(set_defaults)) {
+        .set_default_nesting(gobject, spat_unit, feat_type)
+    }
+
+    # Joint slot populated? defer to gAny (view-filter applies)
+    joint <- gobject@cell_metadata[[spat_unit]][[feat_type]]
+    if (inherits(joint, "cellMetaObj")) {
+        return(callNextMethod(gobject,
+            spat_unit = spat_unit, feat_type = feat_type,
+            output = output, copy_obj = copy_obj, set_defaults = FALSE))
+    }
+
+    # Empty — assemble from children with per-child resolved defaults.
+    cm <- .gm_assemble_cell_metadata(gobject,
+        spat_unit = if (nospec_unit) NULL else spat_unit,
+        feat_type = if (nospec_feat) NULL else feat_type)
+    cm <- .gm_apply_view(cm, gobject)
+    if (output == "data.table") return(cm[])
+    cm
+})
+
+#' @rdname getFeatureMetadata
+#' @export
+setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
+    spat_unit = NULL,
+    feat_type = NULL,
+    output = c("featMetaObj", "data.table"),
+    copy_obj = TRUE,
+    set_defaults = TRUE) {
+    output <- match.arg(output, choices = c("featMetaObj", "data.table"))
+    nospec_unit <- is.null(spat_unit)
+    nospec_feat <- is.null(feat_type)
+    if (isTRUE(set_defaults)) {
+        .set_default_nesting(gobject, spat_unit, feat_type)
+    }
+
+    joint <- gobject@feat_metadata[[spat_unit]][[feat_type]]
+    if (inherits(joint, "featMetaObj")) {
+        return(callNextMethod(gobject,
+            spat_unit = spat_unit, feat_type = feat_type,
+            output = output, copy_obj = copy_obj, set_defaults = FALSE))
+    }
+
+    fm <- .gm_assemble_feat_metadata(gobject,
+        spat_unit = if (nospec_unit) NULL else spat_unit,
+        feat_type = if (nospec_feat) NULL else feat_type)
+    fm <- .gm_apply_view(fm, gobject)
+    if (output == "data.table") return(fm[])
+    fm
+})
 
 
 # SPATIAL-DOMAIN METHODS — per-child dispatch ####
