@@ -2012,6 +2012,8 @@ setMethod("getNearestNetwork", signature("gAny"), function(gobject,
         ))
     }
 
+    nnNet <- .gm_apply_view(nnNet, gobject)
+
     if (output == "nnNetObj") return(nnNet)
     if (output == "igraph") return(slot(nnNet, "igraph"))
     if (output == "data.table") {

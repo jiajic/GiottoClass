@@ -461,3 +461,61 @@ test_that("unfiltered = TRUE returns the child's full content", {
     sl_full <- getSpatialLocations(mg2, object = "a", unfiltered = TRUE)$a
     expect_identical(nrow(sl_full[]), 5L)
 })
+
+
+# compact: materialize the view, trim joint slots ####
+
+test_that("compact trims joint @expression to the current view", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    # populate joint @expression with globally-keyed colnames
+    e <- getExpression(g1)
+    mat <- e[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = e)))
+
+    mg2 <- subset(mg, cells = c("a::c1", "a::c3"))
+    # before compact: joint slot stores full 5 cols, view filter exposes 2
+    expect_identical(ncol(mg2@expression$cell$rna$raw[]), 5L)
+    expect_identical(ncol(getExpression(mg2)[]), 2L)
+
+    mg3 <- compact(mg2)
+    # after compact: joint slot itself is now 2 cols
+    expect_identical(ncol(mg3@expression$cell$rna$raw[]), 2L)
+    # view filter is a no-op (already trimmed)
+    expect_identical(ncol(getExpression(mg3)[]), 2L)
+})
+
+test_that("compact trims joint @cell_metadata to the current view", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    cm1 <- g1@cell_metadata$cell$rna
+    dt <- cm1[]
+    dt$cell_ID <- paste("a", dt$cell_ID, sep = "::")
+    cm1[] <- dt
+    mg@cell_metadata <- list(cell = list(rna = cm1))
+
+    mg2 <- subset(mg, cells = c("a::c2"))
+    expect_identical(nrow(mg2@cell_metadata$cell$rna[]), 5L)
+
+    mg3 <- compact(mg2)
+    expect_identical(nrow(mg3@cell_metadata$cell$rna[]), 1L)
+})
+
+test_that("compact leaves children untouched", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    e <- getExpression(g1)
+    mat <- e[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = e)))
+
+    mg2 <- compact(subset(mg, cells = c("a::c1")))
+    # children intact
+    expect_identical(length(spatIDs(mg2@objects$a)), 5L)
+})

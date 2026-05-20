@@ -298,6 +298,73 @@ setMethod("rebuildMaps", "giottoMulti", function(x, ...) {
 })
 
 
+# COMPACT ####
+
+#' @title Compact a giottoMulti
+#' @name compact
+#' @description
+#' Materialize the current `@id_map` view: trim every populated joint shared
+#' slot to the surviving globals, so the slot's stored content matches what
+#' read accessors would expose. After compact, the view filter becomes a
+#' no-op for those slots (nothing to filter out), and the memory held by
+#' dropped cells / features is reclaimed.
+#'
+#' Use after committing to a subset when you want the joint slots to actually
+#' shrink. Until then the lazy view filter at read time is cheap and fully
+#' reversible via `rebuildMaps()`; compact is a one-way op — once the joint
+#' data outside the current view is dropped, you'd have to re-supply it (or
+#' re-run integration) to widen the view.
+#'
+#' Children (`@objects`) are not touched.
+#' @param x a `giottoMulti`
+#' @returns the input `giottoMulti` with joint slots trimmed to the current view
+#' @export
+setGeneric("compact", function(x, ...) standardGeneric("compact"))
+
+#' @rdname compact
+#' @export
+setMethod("compact", "giottoMulti", function(x, ...) {
+    # Walk every populated joint shared slot; .gm_apply_view does the trim for
+    # whichever subobject class we hit.
+    if (!is.null(x@expression)) {
+        x@expression <- .gm_walk_apply_view(x@expression, x)
+    }
+    if (!is.null(x@cell_metadata)) {
+        x@cell_metadata <- .gm_walk_apply_view(x@cell_metadata, x)
+    }
+    if (!is.null(x@feat_metadata)) {
+        x@feat_metadata <- .gm_walk_apply_view(x@feat_metadata, x)
+    }
+    if (!is.null(x@dimension_reduction)) {
+        x@dimension_reduction <- .gm_walk_apply_view(x@dimension_reduction, x)
+    }
+    if (!is.null(x@nn_network)) {
+        x@nn_network <- .gm_walk_apply_view(x@nn_network, x)
+    }
+    if (!is.null(x@spatial_enrichment)) {
+        x@spatial_enrichment <- .gm_walk_apply_view(x@spatial_enrichment, x)
+    }
+    x
+})
+
+#' Recursively walk a nested list of joint-slot subobjects, applying the view
+#' filter at every leaf. The shared slots are organized as nested lists keyed
+#' by `[spat_unit][feat_type]` (and additional levels for some, e.g. dim
+#' reduction's `[reduction][method][name]`). The leaves are giottoSubobject
+#' instances that `.gm_apply_view` knows how to filter.
+#' @noRd
+.gm_walk_apply_view <- function(node, gobject) {
+    if (is.null(node)) return(node)
+    if (inherits(node, "giottoSubobject")) {
+        return(.gm_apply_view(node, gobject))
+    }
+    if (is.list(node)) {
+        return(lapply(node, .gm_walk_apply_view, gobject))
+    }
+    node
+}
+
+
 # SUBSET ####
 
 #' @title Subset a giottoMulti
@@ -458,6 +525,16 @@ setMethod("show", "giottoMulti", function(object) {
             coords <- x@coordinates
             keep <- rownames(coords) %in% cells
             x@coordinates <- coords[keep, , drop = FALSE]
+        }
+        return(x)
+    }
+
+    if (inherits(x, "nnNetObj")) {
+        if (!is.null(cells)) {
+            g <- x@igraph
+            vnames <- names(igraph::V(g))
+            keep <- vnames %in% cells
+            x@igraph <- igraph::induced_subgraph(g, igraph::V(g)[keep])
         }
         return(x)
     }
