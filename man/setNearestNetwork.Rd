@@ -57,6 +57,9 @@ dimred <- getNearestNetwork(gobject = g)
 setNearestNetwork(gobject = g, x = dimred)
 }
 \seealso{
+Other expression space nearest network accessor functions: 
+\code{\link{getNearestNetwork}()}
+
 Other functions to set data in giotto object: 
 \code{\link{setCellMetadata}()},
 \code{\link{setDimReduction}()},

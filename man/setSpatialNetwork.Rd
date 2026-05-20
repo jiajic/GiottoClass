@@ -53,6 +53,9 @@ spatnet <- getSpatialNetwork(g)
 setSpatialNetwork(gobject = g, x = spatnet)
 }
 \seealso{
+Other spatial network data accessor functions: 
+\code{\link{getSpatialNetwork}()}
+
 Other functions to set data in giotto object: 
 \code{\link{setCellMetadata}()},
 \code{\link{setDimReduction}()},

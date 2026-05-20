@@ -50,12 +50,18 @@ Other feature info data accessor functions:
 \code{\link{setFeatureInfo}()}
 
 Other functions to get data from giotto object: 
+\code{\link{getCellMetadata}()},
+\code{\link{getDimReduction}()},
 \code{\link{getExpression}()},
 \code{\link{getFeatureMetadata}()},
 \code{\link{getGiottoImage}()},
 \code{\link{getMultiomics}()},
+\code{\link{getNearestNetwork}()},
+\code{\link{getPolygonInfo}()},
+\code{\link{getSpatialEnrichment}()},
 \code{\link{getSpatialGrid}()},
 \code{\link{getSpatialLocations}()},
+\code{\link{getSpatialNetwork}()},
 \code{\link{get_multiomics}()}
 }
 \concept{feature info data accessor functions}

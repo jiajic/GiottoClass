@@ -62,6 +62,9 @@ polyinfo <- getPolygonInfo(g, return_giottoPolygon = TRUE)
 setPolygonInfo(gobject = g, x = polyinfo)
 }
 \seealso{
+Other polygon info data accessor functions: 
+\code{\link{getPolygonInfo}()}
+
 Other functions to set data in giotto object: 
 \code{\link{setCellMetadata}()},
 \code{\link{setDimReduction}()},

@@ -434,14 +434,6 @@ set_feat_id <- function(gobject,
 
 ## cell metadata slot ####
 
-#' @title Get cell metadata
-#' @name get_cell_metadata
-#' @inheritParams data_access_params
-#' @param output return as either 'data.table' or 'cellMetaObj'
-#' @keywords internal
-#' @description Get cell metadata from giotto object
-#' @returns a data.table or cellMetaObj
-#' @noRd
 #' @title getCellMetadata
 #' @name getCellMetadata
 #' @inheritParams data_access_params
@@ -1644,18 +1636,6 @@ setMethod("setSpatialLocations", signature("giotto"), function(gobject,
 ## dimension reduction slot ####
 
 #' @title Get dimension reduction
-#' @name get_dimReduction
-#' @inheritParams data_access_params
-#' @param reduction reduction on cells or features (e.g. "cells", "feats")
-#' @param reduction_method reduction method (e.g. "pca", "umap", "tsne")
-#' @param name name of reduction results
-#' @param output object type to return as. Either 'dimObj' (default) or 'matrix'
-#' of the embedding coordinates.
-#' @description Function to get a dimension reduction object
-#' @keywords internal
-#' @returns dim reduction object (default) or dim reduction coordinates
-#' @noRd
-#' @title Get dimension reduction
 #' @name getDimReduction
 #' @inheritParams data_access_params
 #' @param reduction reduction on cells or features (e.g. "cells", "feats")
@@ -1922,15 +1902,6 @@ setMethod("setDimReduction", signature("gAny"), function(gobject,
 
 ## nearest neighbor network slot ####
 
-#' @title Get nearest network
-#' @name get_NearestNetwork
-#' @description Get a NN-network from a Giotto object
-#' @inheritParams data_access_params
-#' @param nn_network_to_use "kNN" or "sNN"
-#' @param network_name name of NN network to be used
-#' @param output return a igraph or data.table object. Default 'igraph'
-#' @returns igraph or data.table object
-#' @noRd
 #' @title Get nearest neighbor network
 #' @name getNearestNetwork
 #' @description Get a NN-network from a Giotto object
@@ -2190,21 +2161,6 @@ setMethod("setNearestNetwork", signature("gAny"), function(gobject,
 
 ## spatial network slot ####
 
-#' @title Get spatial network
-#' @name get_spatialNetwork
-#' @description Function to get a spatial network
-#' @inheritParams data_access_params
-#' @param name name of spatial network
-#' @param output object type to return as. Options:
-#' 'spatialNetworkObj' (default),
-#' 'networkDT' and 'networkDT_before_filter' for data.table outputs.
-#' @param copy_obj whether to copy/duplicate when getting the
-#' object (default = TRUE)
-#' @param verbose be verbose
-#' @param simplify logical. Whether or not to take object out of a list when
-#' there is a length of 1.
-#' @returns spatialNetworkObj of data.table
-#' @noRd
 #' @title Get spatial network
 #' @name getSpatialNetwork
 #' @description Function to get a spatial network
@@ -2654,22 +2610,6 @@ setSpatialGrid <- function(gobject,
 }
 
 ## polygon cell info ####
-
-#' @title Get polygon info
-#' @name get_polygon_info
-#' @description Get giotto polygon spatVector
-#' @param gobject giotto object
-#' @param polygon_name name of polygons. Default "cell"
-#' @param polygon_overlap if not NULL, return specified polygon overlap
-#' information
-#' @param return_giottoPolygon (Defaults to FALSE) Return as giottoPolygon S4
-#' object
-#' @param verbose be verbose
-#' @param simplify logical. Whether or not to take object out of a list when
-#' there is a length of 1.
-#' @returns spatVector
-#' @noRd
-
 
 #' @title Get polygon info
 #' @name getPolygonInfo
@@ -3149,13 +3089,6 @@ setMethod("setFeatureInfo", signature("giotto"), function(gobject,
 ## spatial enrichment slot ####
 
 
-#' @title Get spatial enrichment
-#' @name get_spatial_enrichment
-#' @description Function to get a spatial enrichment data.table
-#' @inheritParams data_access_params
-#' @param enrichm_name name of spatial enrichment results. Default "DWLS"
-#' @returns spatEnrObj or data.table with fractions
-#' @noRd
 #' @title Get spatial enrichment
 #' @name getSpatialEnrichment
 #' @description Function to get a spatial enrichment data.table

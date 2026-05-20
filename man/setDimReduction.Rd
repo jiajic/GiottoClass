@@ -60,6 +60,9 @@ dimred <- getDimReduction(g)
 setDimReduction(gobject = g, x = dimred)
 }
 \seealso{
+Other dimensional reduction data accessor functions: 
+\code{\link{getDimReduction}()}
+
 Other functions to set data in giotto object: 
 \code{\link{setCellMetadata}()},
 \code{\link{setExpression}()},

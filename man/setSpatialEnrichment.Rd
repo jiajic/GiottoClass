@@ -53,6 +53,9 @@ spatenrich <- GiottoData::loadSubObjectMini("spatEnrObj")
 g <- setSpatialEnrichment(g, spatenrich)
 }
 \seealso{
+Other spatial enrichment data accessor functions: 
+\code{\link{getSpatialEnrichment}()}
+
 Other functions to set data in giotto object: 
 \code{\link{setCellMetadata}()},
 \code{\link{setDimReduction}()},
