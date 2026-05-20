@@ -472,10 +472,9 @@ setMethod("show", "giottoMulti", function(object) {
         }
     }
 
-    # view filter: visible vs total. Totals match what an unfiltered
-    # rebuildMaps() would produce — i.e. spatIDs(child) per child, NOT
-    # lengths(child@cell_ID), since child IDs can repeat across spat_units
-    # and that double-counts.
+    # view: subset filter state — visible / total reflects whether the user
+    # has narrowed the view. Totals match what rebuildMaps() would give
+    # unfiltered (spatIDs / featIDs per child, then union).
     if (!is.null(object@id_map$cells) || !is.null(object@id_map$feats)) {
         n_c_vis <- if (!is.null(object@id_map$cells)) {
             nrow(object@id_map$cells)
@@ -485,20 +484,32 @@ setMethod("show", "giottoMulti", function(object) {
                 error = function(e) character()))
         }, integer(1L)))
 
-        # feats: id_map$feats stores per-(object, local_id) rows so size
-        # depends on overlap; the user-meaningful count is unique globals.
+        per_child_feats <- lapply(object@objects, function(g) {
+            tryCatch(featIDs(g), error = function(e) character())
+        })
         n_f_vis <- if (!is.null(object@id_map$feats)) {
             length(unique(object@id_map$feats$global_id))
         } else 0L
-        n_f_total <- length(unique(unlist(
-            lapply(object@objects, function(g) {
-                tryCatch(featIDs(g), error = function(e) character())
-            }), use.names = FALSE)))
+        n_f_total <- length(unique(unlist(per_child_feats, use.names = FALSE)))
 
         c_flag <- if (n_c_vis < n_c_total) " (filtered)" else ""
         f_flag <- if (n_f_vis < n_f_total) " (filtered)" else ""
         cat(sprintf("  view: %d / %d cells%s, %d / %d features%s\n",
             n_c_vis, n_c_total, c_flag, n_f_vis, n_f_total, f_flag))
+
+        # shared: how many features are simultaneously present in all active
+        # children. This is what getExpression(mg) would return as features
+        # when assembling from children. When all children share a panel the
+        # count matches the view total; with mismatched panels it's smaller.
+        f_intersect <- Reduce(intersect, per_child_feats)
+        if (!is.null(object@id_map$feats)) {
+            f_intersect <- intersect(f_intersect,
+                unique(object@id_map$feats$global_id))
+        }
+        if (length(f_intersect) != n_f_total) {
+            cat(sprintf("  shared: %d feature(s) common to all children\n",
+                length(f_intersect)))
+        }
     }
 
     # populated joint shared slots

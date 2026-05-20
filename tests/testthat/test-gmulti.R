@@ -672,6 +672,24 @@ test_that("show(mg) lists populated joint slots", {
     expect_output(show(mg), "joint slots: expression")
 })
 
+test_that("show(mg) adds a 'shared' line when child panels differ", {
+    g1 <- .mk_minimal(5, 4)
+    # b shares 3 of 4 features with a
+    m2 <- matrix(0, nrow = 3, ncol = 3)
+    rownames(m2) <- paste0("f", 1:3)
+    colnames(m2) <- paste0("c", 1:3)
+    g2 <- createGiottoObject(expression = m2, verbose = FALSE)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    out <- capture.output(show(mg))
+    expect_true(any(grepl("shared: 3 feature\\(s\\)", out)))
+
+    # matched panels: no shared line
+    mg_eq <- createGiottoMulti(list(a = g1, b = g1))
+    out_eq <- capture.output(show(mg_eq))
+    expect_false(any(grepl("shared:", out_eq)))
+})
+
 test_that("show(mg) reports active scope only when narrower than all", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
