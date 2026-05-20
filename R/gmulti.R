@@ -450,13 +450,17 @@ setMethod("subset", "giottoMulti",
 setMethod("show", "giottoMulti", function(object) {
     cat(sprintf("An object of class %s\n", class(object)))
 
-    # children (name + cell/feat totals from the child's own ID slots)
+    # children: cell + feature counts from each child's active default
+    # (spatIDs / featIDs). Mirrors what id_map and the view counters use,
+    # so the per-child totals sum to the global "total" below — avoiding
+    # the double-counting that summing lengths(child@cell_ID) would do
+    # when a child has cells in multiple spat_units.
     nms <- names(object)
     cat(sprintf("  %d child object(s):\n", length(object)))
     for (nm in nms) {
         g <- object@objects[[nm]]
-        n_c <- sum(lengths(slot(g, "cell_ID")))
-        n_f <- sum(lengths(slot(g, "feat_ID")))
+        n_c <- length(tryCatch(spatIDs(g), error = function(e) character()))
+        n_f <- length(tryCatch(featIDs(g), error = function(e) character()))
         cat(sprintf("    %s: %d cells, %d features\n", nm, n_c, n_f))
     }
 
@@ -468,23 +472,27 @@ setMethod("show", "giottoMulti", function(object) {
         }
     }
 
-    # view filter: visible vs total. If counts match, no filter; otherwise
-    # flag and show the deficit.
+    # view filter: visible vs total. Totals match what an unfiltered
+    # rebuildMaps() would produce — i.e. spatIDs(child) per child, NOT
+    # lengths(child@cell_ID), since child IDs can repeat across spat_units
+    # and that double-counts.
     if (!is.null(object@id_map$cells) || !is.null(object@id_map$feats)) {
-        n_c_total <- sum(vapply(object@objects,
-            function(g) sum(lengths(slot(g, "cell_ID"))), integer(1L)))
         n_c_vis <- if (!is.null(object@id_map$cells)) {
             nrow(object@id_map$cells)
         } else 0L
+        n_c_total <- sum(vapply(object@objects, function(g) {
+            length(tryCatch(spatIDs(g),
+                error = function(e) character()))
+        }, integer(1L)))
 
         # feats: id_map$feats stores per-(object, local_id) rows so size
-        # depends on overlap; the user-meaningful count is unique globals
+        # depends on overlap; the user-meaningful count is unique globals.
         n_f_vis <- if (!is.null(object@id_map$feats)) {
             length(unique(object@id_map$feats$global_id))
         } else 0L
         n_f_total <- length(unique(unlist(
             lapply(object@objects, function(g) {
-                unlist(slot(g, "feat_ID"), use.names = FALSE)
+                tryCatch(featIDs(g), error = function(e) character())
             }), use.names = FALSE)))
 
         c_flag <- if (n_c_vis < n_c_total) " (filtered)" else ""
@@ -693,6 +701,12 @@ setMethod("show", "giottoMulti", function(object) {
 #' introducing NAs), cbind. The first child's exprObj is used as the metadata
 #' template (spat_unit, feat_type, name) with its matrix replaced.
 #'
+#' Nesting args (`spat_unit`, `feat_type`) are resolved per-child when NULL:
+#' each child uses its own active default. When supplied explicitly they're
+#' broadcast across all children (must match in each). The joint global
+#' namespace is `sample::id` regardless — children with different per-child
+#' spat_unit layouts still contribute correctly.
+#'
 #' Called by `getExpression(giottoMulti, ...)` when `@expression` is empty.
 #' This is the baseline view; integration tools (Harmony, scVI, etc.) overwrite
 #' it via `setExpression(mg, joint)` once they've produced a corrected matrix.
@@ -704,15 +718,31 @@ setMethod("show", "giottoMulti", function(object) {
             call. = FALSE)
     }
 
-    # If values not specified, pick the first name common to all children
+    user_su <- !is.null(spat_unit)
+    user_ft <- !is.null(feat_type)
+
+    # Per-child resolved nesting (used both for finding common `values` and
+    # for the actual fetch loop below).
+    resolved <- lapply(children, function(nm) {
+        g <- gobject@objects[[nm]]
+        su <- if (user_su) spat_unit
+            else tryCatch(set_default_spat_unit(g), error = function(e) NA_character_)
+        ft <- if (user_ft) feat_type
+            else tryCatch(set_default_feat_type(g, spat_unit = su),
+                error = function(e) NA_character_)
+        list(su = su, ft = ft)
+    })
+
+    # When `values` is not given, pick the first name common to all children
+    # under each child's resolved nesting.
     if (is.null(values)) {
-        avail_per_child <- lapply(children, function(nm) {
+        avail_per_child <- mapply(function(nm, r) {
+            g <- gobject@objects[[nm]]
             tryCatch(
-                list_expression_names(gobject@objects[[nm]],
-                    spat_unit = spat_unit, feat_type = feat_type),
+                list_expression_names(g, spat_unit = r$su, feat_type = r$ft),
                 error = function(e) NULL
             )
-        })
+        }, children, resolved, SIMPLIFY = FALSE)
         common <- Reduce(intersect, Filter(Negate(is.null), avail_per_child))
         if (length(common) == 0L) {
             stop(wrap_txt("No expression matrix name common to all active
@@ -723,21 +753,23 @@ setMethod("show", "giottoMulti", function(object) {
         values <- common[[1L]]
     }
 
-    per_child <- lapply(children, function(nm) {
-        e <- tryCatch(getExpression(gobject@objects[[nm]],
-            spat_unit = spat_unit, feat_type = feat_type, values = values,
+    per_child <- mapply(function(nm, r) {
+        g <- gobject@objects[[nm]]
+        e <- tryCatch(getExpression(g,
+            spat_unit = r$su, feat_type = r$ft,
+            values = values,
             output = "exprObj", set_defaults = FALSE),
             error = function(err) NULL)
         if (is.null(e)) return(NULL)
         mat <- e[]
         colnames(mat) <- paste(nm, colnames(mat), sep = "::")
         list(mat = mat, exprObj = e, name = nm)
-    })
+    }, children, resolved, SIMPLIFY = FALSE)
     per_child <- Filter(Negate(is.null), per_child)
     if (length(per_child) == 0L) {
         stop(sprintf(
-            "No child has expression \"%s\" for spat_unit \"%s\" / feat_type \"%s\"",
-            values, spat_unit, feat_type), call. = FALSE)
+            "No child has expression \"%s\" matching the requested nesting",
+            values), call. = FALSE)
     }
 
     feats_common <- Reduce(intersect,
@@ -750,7 +782,10 @@ setMethod("show", "giottoMulti", function(object) {
     mats <- lapply(per_child, function(x) x$mat[feats_common, , drop = FALSE])
     joint_mat <- do.call(cbind, mats)
 
-    # Use first child's exprObj as metadata template
+    # Use first child's exprObj as metadata template; the joint matrix's
+    # spat_unit / feat_type tags inherit from that template, even though the
+    # cells across children may have come from different per-child spat_units.
+    # The global IDs (sample::id) disambiguate.
     template <- per_child[[1L]]$exprObj
     template[] <- joint_mat
     template
@@ -934,6 +969,14 @@ setMethod("getExpression", "giottoMulti",
     function(gobject, values = NULL, spat_unit = NULL, feat_type = NULL,
              output = c("exprObj", "matrix"), set_defaults = TRUE) {
         output <- match.arg(output, choices = c("exprObj", "matrix"))
+
+        # Capture before default resolution so the assembly path can tell
+        # user-supplied (broadcast to every child) from defaulted (let each
+        # child resolve its own active spat_unit / feat_type — children may
+        # have different spat_unit layouts).
+        nospec_unit <- is.null(spat_unit)
+        nospec_feat <- is.null(feat_type)
+
         if (isTRUE(set_defaults)) {
             .set_default_nesting(gobject, spat_unit, feat_type)
         }
@@ -954,7 +997,10 @@ setMethod("getExpression", "giottoMulti",
         # Joint slot empty — assemble naive joint from children, prefix to
         # globals, intersect features. Integration output overrides this via
         # setExpression(mg, ...).
-        e <- .gm_assemble_expression(gobject, spat_unit, feat_type, values)
+        e <- .gm_assemble_expression(gobject,
+            spat_unit = if (nospec_unit) NULL else spat_unit,
+            feat_type = if (nospec_feat) NULL else feat_type,
+            values = values)
         e <- .gm_apply_view(e, gobject)
         if (output == "matrix") return(e[])
         e

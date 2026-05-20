@@ -535,6 +535,34 @@ test_that("assembled joint expression respects @id_map view filter", {
     expect_identical(colnames(e[]), c("a::c1", "b::c2"))
 })
 
+test_that("assembly resolves per-child defaults when nesting args are NULL", {
+    # Both children have a `cell` spat_unit; we add an extra spat_unit to
+    # `a` and make it the active one so a's default (`extra`) differs from
+    # b's default (`cell`). The joint assembly should pull a's `extra` and
+    # b's `cell` independently — the global namespace (sample::id)
+    # disambiguates either way.
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+
+    # add an "extra" spat_unit to g1 with the same cell IDs
+    e_extra <- g1@expression$cell$rna$raw
+    spatUnit(e_extra) <- "extra"
+    g1@expression$extra <- list(rna = list(raw = e_extra))
+    g1@cell_metadata$extra <- g1@cell_metadata$cell
+    g1@feat_metadata$extra <- g1@feat_metadata$cell
+    g1@cell_ID$extra <- g1@cell_ID$cell
+    g1 <- initialize(g1)
+    activeSpatUnit(g1) <- "extra"
+
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    # a's default spat_unit is "extra"; b's default is "cell". Per-child
+    # resolution should let both contribute.
+    e <- getExpression(mg)
+    expect_identical(ncol(e[]), 8L)
+    expect_true(all(c("a::c1", "b::c1") %in% colnames(e[])))
+})
+
 test_that("assembly intersects features across children", {
     g1 <- .mk_minimal(5, 4)
     # Trim g2's feature panel to 3 features (intersect with g1's 4 → 3 features)
