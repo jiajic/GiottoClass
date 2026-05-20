@@ -246,6 +246,24 @@ createGiottoMulti <- function(objects, active = NULL, instructions = NULL) {
 }
 
 
+# COERCION ####
+
+#' Wrap a single `giotto` as a one-child `giottoMulti`.
+#'
+#' Useful as a quick path for code that wants to operate uniformly on a multi
+#' (no class branches), and to gain the lazy view layer (`subset()` /
+#' `rebuildMaps()` / `compact()` / view-filter on read) on top of a single
+#' giotto without committing to a destructive in-place subset.
+#'
+#' The child is named `"sample1"` by default. To pick a different name use
+#' `createGiottoMulti(list(my_name = g))` directly.
+#' @name as-giottoMulti
+#' @aliases as,giotto,giottoMulti-method
+setAs("giotto", "giottoMulti", function(from) {
+    createGiottoMulti(list(sample1 = from))
+})
+
+
 # INTROSPECTION ####
 
 #' @noRd

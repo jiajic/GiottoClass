@@ -581,3 +581,45 @@ test_that("compact leaves children untouched", {
     # children intact
     expect_identical(length(spatIDs(mg2@objects$a)), 5L)
 })
+
+
+# as(giotto, "giottoMulti") — single-object wrap ####
+
+test_that("as(g, 'giottoMulti') wraps a single giotto with default name", {
+    g <- .mk_minimal(5, 4)
+    mg <- as(g, "giottoMulti")
+    expect_s4_class(mg, "giottoMulti")
+    expect_identical(length(mg), 1L)
+    expect_identical(names(mg), "sample1")
+    # children intact
+    expect_identical(length(spatIDs(mg@objects$sample1)), 5L)
+})
+
+test_that("wrapped giottoMulti exposes the lazy view layer", {
+    g <- .mk_minimal(5, 4)
+    mg <- as(g, "giottoMulti")
+
+    # globals are sample1::c{1..5}
+    expect_identical(spatIDs(mg),
+        paste("sample1", paste0("c", 1:5), sep = "::"))
+
+    # subset narrows non-destructively
+    mg2 <- subset(mg, cells = c("sample1::c1", "sample1::c3"))
+    expect_identical(spatIDs(mg2), c("sample1::c1", "sample1::c3"))
+    expect_identical(length(spatIDs(mg2@objects$sample1)), 5L)
+
+    # rebuildMaps restores
+    mg3 <- rebuildMaps(mg2)
+    expect_identical(length(spatIDs(mg3)), 5L)
+})
+
+test_that("assembled joint expression on wrapped giotto carries globals", {
+    g <- .mk_minimal(5, 4)
+    mg <- as(g, "giottoMulti")
+
+    e <- getExpression(mg)
+    expect_s4_class(e, "exprObj")
+    expect_identical(dim(e[]), c(4L, 5L))
+    expect_identical(colnames(e[]),
+        paste("sample1", paste0("c", 1:5), sep = "::"))
+})
