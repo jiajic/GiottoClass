@@ -449,21 +449,68 @@ setMethod("subset", "giottoMulti",
 #' @noRd
 setMethod("show", "giottoMulti", function(object) {
     cat(sprintf("An object of class %s\n", class(object)))
-    cat(sprintf("  %d object(s): %s\n",
-        length(object),
-        paste(names(object), collapse = ", ")))
-    if (length(object@active) > 0L && !any(is.na(object@active))) {
-        cat(sprintf("  active: %s\n",
-            paste(object@active, collapse = ", ")))
+
+    # children (name + cell/feat totals from the child's own ID slots)
+    nms <- names(object)
+    cat(sprintf("  %d child object(s):\n", length(object)))
+    for (nm in nms) {
+        g <- object@objects[[nm]]
+        n_c <- sum(lengths(slot(g, "cell_ID")))
+        n_f <- sum(lengths(slot(g, "feat_ID")))
+        cat(sprintf("    %s: %d cells, %d features\n", nm, n_c, n_f))
     }
-    if (!is.null(object@id_map$cells)) {
-        cat(sprintf("  %d total cells (global)\n",
-            nrow(object@id_map$cells)))
+
+    # active scope (if narrower than all)
+    active <- object@active
+    if (length(active) >= 1L && !any(is.na(active))) {
+        if (!setequal(active, nms)) {
+            cat(sprintf("  active: %s\n", paste(active, collapse = ", ")))
+        }
     }
-    if (!is.null(object@id_map$feats)) {
-        cat(sprintf("  %d total features (global)\n",
-            nrow(object@id_map$feats)))
+
+    # view filter: visible vs total. If counts match, no filter; otherwise
+    # flag and show the deficit.
+    if (!is.null(object@id_map$cells) || !is.null(object@id_map$feats)) {
+        n_c_total <- sum(vapply(object@objects,
+            function(g) sum(lengths(slot(g, "cell_ID"))), integer(1L)))
+        n_c_vis <- if (!is.null(object@id_map$cells)) {
+            nrow(object@id_map$cells)
+        } else 0L
+
+        # feats: id_map$feats stores per-(object, local_id) rows so size
+        # depends on overlap; the user-meaningful count is unique globals
+        n_f_vis <- if (!is.null(object@id_map$feats)) {
+            length(unique(object@id_map$feats$global_id))
+        } else 0L
+        n_f_total <- length(unique(unlist(
+            lapply(object@objects, function(g) {
+                unlist(slot(g, "feat_ID"), use.names = FALSE)
+            }), use.names = FALSE)))
+
+        c_flag <- if (n_c_vis < n_c_total) " (filtered)" else ""
+        f_flag <- if (n_f_vis < n_f_total) " (filtered)" else ""
+        cat(sprintf("  view: %d / %d cells%s, %d / %d features%s\n",
+            n_c_vis, n_c_total, c_flag, n_f_vis, n_f_total, f_flag))
     }
+
+    # populated joint shared slots
+    slot_check <- list(
+        expression = "expression",
+        cell_metadata = "cell_metadata",
+        feat_metadata = "feat_metadata",
+        dimension_reduction = "dimension_reduction",
+        nn_network = "nn_network",
+        spatial_enrichment = "spatial_enrichment"
+    )
+    populated <- vapply(names(slot_check), function(s) {
+        v <- slot(object, s)
+        !is.null(v) && length(v) > 0L
+    }, logical(1L))
+    if (any(populated)) {
+        cat(sprintf("  joint slots: %s\n",
+            paste(names(slot_check)[populated], collapse = ", ")))
+    }
+
     invisible(NULL)
 })
 

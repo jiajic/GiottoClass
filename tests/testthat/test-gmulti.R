@@ -613,6 +613,50 @@ test_that("wrapped giottoMulti exposes the lazy view layer", {
     expect_identical(length(spatIDs(mg3)), 5L)
 })
 
+test_that("show(mg) surfaces children, view counts, joint slots", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    # unfiltered: no "(filtered)" tag
+    expect_output(show(mg), "2 child object\\(s\\)")
+    expect_output(show(mg), "a: 5 cells, 4 features")
+    expect_output(show(mg), "b: 3 cells, 4 features")
+    expect_output(show(mg), "view: 8 / 8 cells, 4 / 4 features")
+    # no joint slots populated
+    expect_failure(expect_output(show(mg), "joint slots:"))
+
+    # after subset: filtered flag appears
+    mg2 <- subset(mg, cells = c("a::c1", "b::c1"))
+    expect_output(show(mg2), "view: 2 / 8 cells \\(filtered\\)")
+})
+
+test_that("show(mg) lists populated joint slots", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+
+    e <- getExpression(g1)
+    mat <- e[]
+    colnames(mat) <- paste("a", colnames(mat), sep = "::")
+    e[] <- mat
+    mg@expression <- list(cell = list(rna = list(raw = e)))
+
+    expect_output(show(mg), "joint slots: expression")
+})
+
+test_that("show(mg) reports active scope only when narrower than all", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    # default active = all → no active line
+    expect_failure(expect_output(show(mg), "active:"))
+
+    activeObjects(mg) <- "a"
+    expect_output(show(mg), "active: a")
+})
+
+
 test_that("assembled joint expression on wrapped giotto carries globals", {
     g <- .mk_minimal(5, 4)
     mg <- as(g, "giottoMulti")
