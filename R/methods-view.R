@@ -95,13 +95,15 @@ setMethod("subset", signature(x = "giottoView"),
                 logical(1L)))) { env <- f; break }
         }
         # Eagerly substitute env-resident scalar / vector values into the
-        # predicate so the recipe is self-contained — independent of
-        # lexical scope at resolve time, and immune to subsequent mutation
-        # of the captured vars.
+        # predicate so the recipe is self-contained — independent of the
+        # caller's local bindings, and immune to subsequent mutation of
+        # the captured vars. Keep `env` as the user's frame (not baseenv)
+        # so function lookups (`median`, `c`, `%in%`, etc.) resolve via
+        # the proper package chain at evaluation time.
         pred <- .eager_substitute_env(pred, env)
         .view_record_step(x, new("viewFilter",
             predicate  = pred,
-            env        = baseenv(),
+            env        = env,
             scope_args = list(...)
         ))
     }
@@ -217,7 +219,7 @@ setMethod("giottoView", signature(gobject = "missing", name = "missing"),
 
 #' @rdname giottoView
 #' @export
-setMethod("giottoView", signature(gobject = "giotto", name = "character"),
+setMethod("giottoView", signature(gobject = "gAny", name = "character"),
     function(gobject, name, ...) {
         checkmate::assert_character(name, len = 1L)
         v <- gobject@view[[name]]
@@ -232,7 +234,7 @@ setMethod("giottoView", signature(gobject = "giotto", name = "character"),
 
 #' @rdname giottoView
 #' @export
-setMethod("giottoView", signature(gobject = "giotto", name = "missing"),
+setMethod("giottoView", signature(gobject = "gAny", name = "missing"),
     function(gobject, name, ...) {
         nm <- giottoViews(gobject)
         if (length(nm) == 0L) return(NULL)
@@ -245,7 +247,7 @@ setMethod("giottoView", signature(gobject = "giotto", name = "missing"),
 #' @rdname giottoView
 #' @export
 setMethod("giottoView<-",
-    signature(gobject = "giotto", name = "character", value = "giottoView"),
+    signature(gobject = "gAny", name = "character", value = "giottoView"),
     function(gobject, name, ..., value) {
         checkmate::assert_character(name, len = 1L)
         value@name <- name
@@ -258,7 +260,7 @@ setMethod("giottoView<-",
 #' @rdname giottoView
 #' @export
 setMethod("giottoView<-",
-    signature(gobject = "giotto", name = "character", value = "NULL"),
+    signature(gobject = "gAny", name = "character", value = "NULL"),
     function(gobject, name, ..., value) {
         if (is.null(gobject@view) || !name %in% names(gobject@view)) {
             return(gobject)
@@ -270,7 +272,7 @@ setMethod("giottoView<-",
 
 #' @rdname giottoView
 #' @export
-setMethod("giottoViews", signature(gobject = "giotto"),
+setMethod("giottoViews", signature(gobject = "gAny"),
     function(gobject, ...) {
         nm <- names(gobject@view)
         if (is.null(nm)) character() else nm
@@ -358,6 +360,77 @@ setMethod("materialize",
 #' @export
 setMethod("materialize",
     signature(gobject = "giotto", view = "character"),
+    function(gobject, view, space = NULL, coordinator = NULL, ...) {
+        v <- giottoView(gobject, view)
+        materialize(gobject, v, space = space, coordinator = coordinator, ...)
+    }
+)
+
+
+# materialize on giottoMulti ####
+# 1. Apply selectSamples FIRST — narrow children before any per-child
+#    work touches storage (matters at 4B-points-per-multi scale).
+# 2. Per-surviving-child materialize with the child-scoped giottoSpace.
+# 3. Narrow joint shared slots (multi-level @cell_metadata, @expression,
+#    @dimension_reduction, @spatial_enrichment, @feat_metadata) via the
+#    existing resolveSubobject dispatch — spatValues works on multi now,
+#    so the joint-level predicates resolve against joint slots and the
+#    surviving global cell_IDs narrow each joint subobject.
+
+#' @rdname materialize
+#' @export
+setMethod("materialize",
+    signature(gobject = "giottoMulti", view = "giottoView"),
+    function(gobject, view, space = NULL, coordinator = NULL, ...) {
+        if (is.null(coordinator)) {
+            coordinator <- .default_view_coordinator(gobject)
+        }
+        space_obj <- .resolve_view_space(gobject, view, space)
+        cache <- .new_resolver_cache()
+
+        # Resolve selectSamples FIRST — narrow children before any
+        # per-child work touches storage.
+        selected <- .resolve_sample_select(gobject, view)
+        if (length(selected) == 1L && is.na(selected)) {
+            selected <- names(gobject@objects)
+        } else {
+            selected <- intersect(selected, names(gobject@objects))
+        }
+
+        out <- gobject
+        out@objects <- gobject@objects[selected]
+
+        # Per-surviving-child materialize with the child-scoped space.
+        out@objects <- setNames(lapply(selected, function(samp) {
+            child <- out@objects[[samp]]
+            child_space <- .scope_space_to_sample(space_obj, samp)
+            materialize(child, view, space = child_space,
+                coordinator = coordinator, ...)
+        }), selected)
+
+        # Narrow joint shared slots — uses the same resolveSubobject
+        # dispatch as the giotto path; spatValues-on-multi resolves
+        # predicates against joint slots and returns global cell_IDs
+        # which then filter each joint subobject's metaDT / matrix.
+        out <- .materialize_walk(out, "cell_metadata",
+            view, space_obj, coordinator, cache)
+        out <- .materialize_walk(out, "expression",
+            view, space_obj, coordinator, cache)
+        out <- .materialize_walk(out, "dimension_reduction",
+            view, space_obj, coordinator, cache)
+        out <- .materialize_walk(out, "spatial_enrichment",
+            view, space_obj, coordinator, cache)
+        out <- .materialize_walk(out, "feat_metadata",
+            view, space_obj, coordinator, cache)
+
+        out
+    }
+)
+
+#' @rdname materialize
+#' @export
+setMethod("materialize",
+    signature(gobject = "giottoMulti", view = "character"),
     function(gobject, view, space = NULL, coordinator = NULL, ...) {
         v <- giottoView(gobject, view)
         materialize(gobject, v, space = space, coordinator = coordinator, ...)

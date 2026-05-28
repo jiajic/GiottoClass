@@ -3418,14 +3418,29 @@ spatValues <- function(gobject,
     dim_reduction_to_use = NULL,
     dim_reduction_name = NULL,
     svkey = NULL,
+    view = NULL,
+    space = NULL,
     verbose = NULL,
     debug = FALSE) {
-    checkmate::assert_class(gobject, "giotto")
+    checkmate::assert_class(gobject, "gAny")
     if (!is.null(svkey)) {
         checkmate::assert_class(svkey, "svkey")
         return(svkey@get(gobject))
     }
     checkmate::assert_character(feats)
+
+    # Self-reference / re-entry guard. The resolver calls spatValues
+    # internally to evaluate view-filter predicates; those calls pass
+    # NO view/space (see `.eval_view_filter`). If someone constructs a
+    # view whose machinery would round-trip view= through spatValues
+    # again, we'd recurse. Cheap defensive guard via a process-scoped
+    # env: while resolving a view through spatValues, drop the view arg
+    # on any re-entrant call rather than recursing.
+    if (!is.null(view) && isTRUE(getOption(
+        "giotto.spatValues_view_active", FALSE))) {
+        view <- NULL
+        space <- NULL
+    }
 
     a <- get_args_list()
 
@@ -3511,14 +3526,18 @@ spatValues <- function(gobject,
         if (!is.null(vals)) {
             return(vals)
         }
-        sl <- getSpatialLocations(
+        # spatial_locs is a per-child slot on giottoMulti; the getter is
+        # signature("giotto") only. Gracefully no-op on multi via tryCatch
+        # so spatValues falls through to whatever joint-level slot has the
+        # requested features.
+        sl <- tryCatch(getSpatialLocations(
             gobject = gobject,
             spat_unit = spat_unit,
             name = spat_loc_name,
             output = "spatLocsObj",
             copy_obj = FALSE,
             set_defaults = TRUE # try to guess name
-        )
+        ), error = function(e) NULL)
         if (is.null(sl)) {
             return(NULL)
         }
@@ -3602,12 +3621,13 @@ spatValues <- function(gobject,
         if (!is.null(vals)) {
             return(vals)
         }
-        p <- getPolygonInfo(
+        # polygon info is per-child on multi; gracefully no-op there.
+        p <- tryCatch(getPolygonInfo(
             gobject = gobject,
             polygon_name = spat_unit,
             return_giottoPolygon = TRUE,
             verbose = FALSE
-        )
+        ), error = function(e) NULL)
         if (is.null(p)) {
             return(NULL)
         }
@@ -3708,6 +3728,29 @@ spatValues <- function(gobject,
             paste(nextcheck, collapse = ", "),
             "for spat_unit", spat_unit, "and feat_type", feat_type
         ))
+    }
+
+    # View / space application (opt-in). View narrows the returned
+    # data.table by surviving cell_IDs from the view recipe; space is
+    # accepted for API symmetry but does NOT transform value columns
+    # (only `cell_ID` survival is affected). For transformed coords use
+    # getSpatialLocations(g, view = ..., space = ...) which projects
+    # through the resolver at the subobject level.
+    if (!is.null(view) || !is.null(space)) {
+        v <- if (is.character(view)) giottoView(gobject, view) else view
+        s <- .resolve_view_space(gobject, v, space)
+        coord <- .default_view_coordinator(gobject)
+        # Re-entry guard: any internal spatValues call made while we're
+        # computing surviving cell_IDs sees the option set and drops its
+        # view arg, breaking any recursion path.
+        old_opt <- getOption("giotto.spatValues_view_active", FALSE)
+        options(giotto.spatValues_view_active = TRUE)
+        on.exit(options(giotto.spatValues_view_active = old_opt),
+            add = TRUE)
+        keep <- .cached_surviving_cell_ids(gobject, v, s, coord)
+        if (!is.null(keep)) {
+            vals <- vals[cell_ID %in% keep]
+        }
     }
 
     return(vals)

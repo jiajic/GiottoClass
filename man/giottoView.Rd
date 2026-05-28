@@ -4,11 +4,11 @@
 \alias{giottoView}
 \alias{giottoView<-}
 \alias{giottoViews}
-\alias{giottoView,giotto,character-method}
-\alias{giottoView,giotto,missing-method}
-\alias{giottoView<-,giotto,character,giottoView-method}
-\alias{giottoView<-,giotto,character,NULL-method}
-\alias{giottoViews,giotto-method}
+\alias{giottoView,gAny,character-method}
+\alias{giottoView,gAny,missing-method}
+\alias{giottoView<-,gAny,character,giottoView-method}
+\alias{giottoView<-,gAny,character,NULL-method}
+\alias{giottoViews,gAny-method}
 \title{Slotted views on a giotto object}
 \usage{
 giottoView(gobject, name, ...)
@@ -17,15 +17,15 @@ giottoView(gobject, name, ...) <- value
 
 giottoViews(gobject, ...)
 
-\S4method{giottoView}{giotto,character}(gobject, name, ...)
+\S4method{giottoView}{gAny,character}(gobject, name, ...)
 
-\S4method{giottoView}{giotto,missing}(gobject, name, ...)
+\S4method{giottoView}{gAny,missing}(gobject, name, ...)
 
-\S4method{giottoView}{giotto,character,giottoView}(gobject, name, ...) <- value
+\S4method{giottoView}{gAny,character,giottoView}(gobject, name, ...) <- value
 
-\S4method{giottoView}{giotto,character,NULL}(gobject, name, ...) <- value
+\S4method{giottoView}{gAny,character,NULL}(gobject, name, ...) <- value
 
-\S4method{giottoViews}{giotto}(gobject, ...)
+\S4method{giottoViews}{gAny}(gobject, ...)
 }
 \arguments{
 \item{gobject}{a \code{giotto} object (or omitted for the constructor)}

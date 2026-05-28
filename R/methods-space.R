@@ -206,7 +206,7 @@ NULL
 
 #' @rdname giottoSpace
 #' @export
-setMethod("giottoSpace", signature(gobject = "giotto", name = "character"),
+setMethod("giottoSpace", signature(gobject = "gAny", name = "character"),
     function(gobject, name, ...) {
         checkmate::assert_character(name, len = 1L)
         s <- gobject@spaces[[name]]
@@ -221,7 +221,7 @@ setMethod("giottoSpace", signature(gobject = "giotto", name = "character"),
 
 #' @rdname giottoSpace
 #' @export
-setMethod("giottoSpace", signature(gobject = "giotto", name = "missing"),
+setMethod("giottoSpace", signature(gobject = "gAny", name = "missing"),
     function(gobject, name, ...) {
         nm <- giottoSpaces(gobject)
         if (length(nm) == 0L) return(NULL)
@@ -234,7 +234,7 @@ setMethod("giottoSpace", signature(gobject = "giotto", name = "missing"),
 #' @rdname giottoSpace
 #' @export
 setMethod("giottoSpace<-",
-    signature(gobject = "giotto", name = "character", value = "giottoSpace"),
+    signature(gobject = "gAny", name = "character", value = "giottoSpace"),
     function(gobject, name, ..., value) {
         checkmate::assert_character(name, len = 1L)
         value@name <- name
@@ -247,7 +247,7 @@ setMethod("giottoSpace<-",
 #' @rdname giottoSpace
 #' @export
 setMethod("giottoSpace<-",
-    signature(gobject = "giotto", name = "character", value = "NULL"),
+    signature(gobject = "gAny", name = "character", value = "NULL"),
     function(gobject, name, ..., value) {
         if (is.null(gobject@spaces) ||
             !name %in% names(gobject@spaces)) return(gobject)
@@ -258,7 +258,7 @@ setMethod("giottoSpace<-",
 
 #' @rdname giottoSpace
 #' @export
-setMethod("giottoSpaces", signature(gobject = "giotto"),
+setMethod("giottoSpaces", signature(gobject = "gAny"),
     function(gobject, ...) {
         nm <- names(gobject@spaces)
         if (is.null(nm)) character() else nm
@@ -292,6 +292,27 @@ setMethod("show", signature("giottoSpace"), function(object) {
 setMethod("show", signature("spaceTransform"), function(object) {
     cat(sprintf("<spaceTransform> %s\n", .space_step_label(object)))
 })
+
+# Scope a multi-sample space down to one child. Returns a giottoSpace whose
+# @samples carries only the transforms for `sample_name`, re-keyed under
+# the single-sample sentinel so the child's per-sample resolver picks them
+# up naturally. Falls back to NULL if the child has no matching key — the
+# resolver will treat that as "no space transform for this child."
+#' @keywords internal
+#' @noRd
+.scope_space_to_sample <- function(space, sample_name) {
+    if (is.null(space)) return(NULL)
+    keys <- names(space@samples)
+    pick <- if (sample_name %in% keys) sample_name
+        else if (.space_default_sample %in% keys) .space_default_sample
+        else NULL
+    if (is.null(pick)) return(NULL)
+    out <- space
+    out@samples <- setNames(list(space@samples[[pick]]),
+        .space_default_sample)
+    out
+}
+
 
 # Compact one-line label for a spaceTransform — used by show methods.
 .space_step_label <- function(step) {

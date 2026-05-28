@@ -4,11 +4,11 @@
 \alias{giottoSpace}
 \alias{giottoSpace<-}
 \alias{giottoSpaces}
-\alias{giottoSpace,giotto,character-method}
-\alias{giottoSpace,giotto,missing-method}
-\alias{giottoSpace<-,giotto,character,giottoSpace-method}
-\alias{giottoSpace<-,giotto,character,NULL-method}
-\alias{giottoSpaces,giotto-method}
+\alias{giottoSpace,gAny,character-method}
+\alias{giottoSpace,gAny,missing-method}
+\alias{giottoSpace<-,gAny,character,giottoSpace-method}
+\alias{giottoSpace<-,gAny,character,NULL-method}
+\alias{giottoSpaces,gAny-method}
 \title{Slotted spaces on a giotto object}
 \usage{
 giottoSpace(gobject, name, ...)
@@ -17,15 +17,15 @@ giottoSpace(gobject, name, ...) <- value
 
 giottoSpaces(gobject, ...)
 
-\S4method{giottoSpace}{giotto,character}(gobject, name, ...)
+\S4method{giottoSpace}{gAny,character}(gobject, name, ...)
 
-\S4method{giottoSpace}{giotto,missing}(gobject, name, ...)
+\S4method{giottoSpace}{gAny,missing}(gobject, name, ...)
 
-\S4method{giottoSpace}{giotto,character,giottoSpace}(gobject, name, ...) <- value
+\S4method{giottoSpace}{gAny,character,giottoSpace}(gobject, name, ...) <- value
 
-\S4method{giottoSpace}{giotto,character,NULL}(gobject, name, ...) <- value
+\S4method{giottoSpace}{gAny,character,NULL}(gobject, name, ...) <- value
 
-\S4method{giottoSpaces}{giotto}(gobject, ...)
+\S4method{giottoSpaces}{gAny}(gobject, ...)
 }
 \arguments{
 \item{gobject}{a \code{giotto} object (or omitted for the constructor)}

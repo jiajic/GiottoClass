@@ -4,6 +4,8 @@
 \alias{materialize}
 \alias{materialize,giotto,giottoView-method}
 \alias{materialize,giotto,character-method}
+\alias{materialize,giottoMulti,giottoView-method}
+\alias{materialize,giottoMulti,character-method}
 \title{materialize a giottoView into a new gobject}
 \usage{
 materialize(gobject, view, ...)
@@ -11,6 +13,10 @@ materialize(gobject, view, ...)
 \S4method{materialize}{giotto,giottoView}(gobject, view, space = NULL, coordinator = NULL, ...)
 
 \S4method{materialize}{giotto,character}(gobject, view, space = NULL, coordinator = NULL, ...)
+
+\S4method{materialize}{giottoMulti,giottoView}(gobject, view, space = NULL, coordinator = NULL, ...)
+
+\S4method{materialize}{giottoMulti,character}(gobject, view, space = NULL, coordinator = NULL, ...)
 }
 \arguments{
 \item{gobject}{a \code{giotto} object}

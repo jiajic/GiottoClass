@@ -17,6 +17,8 @@ spatValues(
   dim_reduction_to_use = NULL,
   dim_reduction_name = NULL,
   svkey = NULL,
+  view = NULL,
+  space = NULL,
   verbose = NULL,
   debug = FALSE
 )
