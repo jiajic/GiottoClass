@@ -12,14 +12,14 @@ getSpatialNetwork(gobject, ...)
   gobject,
   spat_unit = NULL,
   name = NULL,
-  output = c("spatialNetworkObj", "networkDT", "networkDT_before_filter", "outputObj"),
+  output = c("spatialNetworkObj", "igraph", "networkDT", "unfiltered", "outputObj"),
   set_defaults = TRUE,
   copy_obj = TRUE,
   verbose = TRUE,
   simplify = TRUE
 )
 
-\S4method{getSpatialNetwork}{giottoMulti}(gobject, object = NULL, unfiltered = FALSE, ...)
+\S4method{getSpatialNetwork}{giottoMulti}(gobject, object = NULL, ...)
 }
 \arguments{
 \item{gobject}{giotto object}

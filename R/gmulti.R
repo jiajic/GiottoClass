@@ -146,7 +146,9 @@ giottoMulti <- setClass(
         parameters          = "ANY",
         versions            = "list",
         misc                = "list",
-        source              = "ANY"
+        source              = "ANY",
+        view                = "nullOrList",
+        spaces              = "nullOrList"
     ),
     prototype = list(
         objects             = list(),
@@ -168,7 +170,9 @@ giottoMulti <- setClass(
         parameters          = list(),
         versions            = .versions_info(),
         misc                = list(),
-        source              = NULL
+        source              = NULL,
+        view                = NULL,
+        spaces              = NULL
     )
 )
 

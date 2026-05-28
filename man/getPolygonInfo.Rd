@@ -14,7 +14,9 @@ getPolygonInfo(gobject, ...)
   polygon_overlap = NULL,
   return_giottoPolygon = FALSE,
   verbose = TRUE,
-  simplify = TRUE
+  simplify = TRUE,
+  view = NULL,
+  space = NULL
 )
 
 \S4method{getPolygonInfo}{giottoMulti}(gobject, object = NULL, ...)
@@ -33,6 +35,14 @@ S4 object}
 
 \item{simplify}{logical. Whether or not to take object out of a list when
 there is a length of 1.}
+
+\item{view}{optional \code{giottoView} or character(1) name of a slotted view;
+when supplied, returned polygons are narrowed by surviving cell set via
+\code{\link[=resolveSubobject]{resolveSubobject()}}}
+
+\item{space}{optional \code{giottoSpace} or character(1) name of a slotted
+space; when supplied, the recorded transforms are applied to the
+returned polygon geometry}
 }
 \value{
 spatVector

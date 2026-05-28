@@ -15,7 +15,9 @@ getExpression(gobject, ...)
   spat_unit = NULL,
   feat_type = NULL,
   output = c("exprObj", "matrix"),
-  set_defaults = TRUE
+  set_defaults = TRUE,
+  view = NULL,
+  space = NULL
 )
 
 \S4method{getExpression}{giottoMulti}(
@@ -46,6 +48,13 @@ either matrix' for the matrix object contained in the exprObj or
 \item{set_defaults}{set default spat_unit and feat_type. Change to FALSE
 only when
 expression and spat_info are not expected to exist.}
+
+\item{view}{optional \code{giottoView} or character(1) name of a slotted view;
+when supplied, the returned expression is narrowed to the cell set the
+view defines via \code{\link[=resolveSubobject]{resolveSubobject()}}}
+
+\item{space}{optional \code{giottoSpace} or character(1) name of a slotted
+space; accepted for API symmetry (no-op on expression — tabular)}
 }
 \value{
 exprObj or matrix depending on output param

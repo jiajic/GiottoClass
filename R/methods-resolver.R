@@ -1,0 +1,544 @@
+#' @include classes-resolver.R
+#' @include classes-view.R
+#' @include classes-space.R
+#' @include classes.R
+NULL
+
+# =============================================================================
+# methods-resolver.R — resolveSubobject generic + dataTableCoordinator methods
+#
+# resolveSubobject(subobj, gobject, view, space, coordinator, ...) takes one
+# subobject, the parent gobject (for spatValues lookups), and the
+# view+space+coordinator. Returns a new subobject projected through the
+# recipe.
+#
+# The `coordinator` is a `viewCoordinator`-inheriting object that brokers
+# IDs and joins between storage backings during resolution — see
+# `R/classes-resolver.R` for the protocol notes.
+#
+# Cell-set narrowing is computed once via `.surviving_cell_ids()`; tabular
+# subobjects narrow by that set, spatial subobjects narrow + apply
+# transforms via existing eager GiottoClass dispatch.
+# =============================================================================
+
+
+# Generic ####
+
+#' @title resolveSubobject
+#' @name resolveSubobject
+#' @description Apply a [giottoView-class] (and optional [giottoSpace-class])
+#' recipe to a single subobject, returning the projected subobject. Dispatch
+#' is on `(subobj, coordinator)` so different storage-bridging coordinators
+#' register different methods.
+#'
+#' @param subobj a giotto subobject (e.g. `cellMetaObj`, `spatLocsObj`, ...)
+#' @param gobject the parent `giotto` (needed for cross-slot lookups via
+#'   `spatValues()`)
+#' @param view a [giottoView-class] or `NULL`
+#' @param space a [giottoSpace-class] or `NULL`
+#' @param coordinator a [viewCoordinator-class]-inheriting object brokering
+#'   IDs and joins between storage backings
+#' @param ... reserved for backend-specific args
+#' @returns the projected subobject (same class as `subobj`)
+#' @export
+setGeneric("resolveSubobject",
+    function(subobj, gobject, view, space, coordinator, ...)
+        standardGeneric("resolveSubobject"))
+
+
+# Coordinator protocol ####
+
+#' @title prepareIds
+#' @name prepareIds
+#' @description Coordinator-side protocol method: promote an R-memory
+#' cell_ID character vector into the form the coordinator's preferred
+#' backend uses for filtering. For [dataTableCoordinator-class] this is
+#' the identity transform; downstream coordinators (e.g. duckDB / sedona
+#' from GiottoDisk) register methods that perform ephemeral table
+#' registration or similar.
+#'
+#' @param coordinator a [viewCoordinator-class]-inheriting object
+#' @param ids character vector of cell_IDs
+#' @param ... reserved
+#' @returns the prepared IDs in the coordinator's preferred form
+#' @export
+setGeneric("prepareIds",
+    function(coordinator, ids, ...) standardGeneric("prepareIds"))
+
+#' @rdname prepareIds
+#' @export
+setMethod("prepareIds", signature(coordinator = "dataTableCoordinator"),
+    function(coordinator, ids, ...) ids
+)
+
+
+# Helpers ####
+
+# Resolve which `coordinator` to use when the caller doesn't pass one
+# explicitly. In-memory by default; downstream packages (e.g. GiottoDisk)
+# can override by extending this dispatch via S3 on the `@source` class.
+#' @keywords internal
+#' @noRd
+.default_view_coordinator <- function(gobject) {
+    src <- gobject@source
+    if (is.null(src)) return(dataTableCoordinator())
+    # Hook for GiottoDisk: dispatch on source class via S3 method.
+    fn <- tryCatch(utils::getS3method(
+        "defaultViewCoordinator", class(src)[[1L]], optional = TRUE),
+        error = function(e) NULL)
+    if (!is.null(fn)) return(fn(src))
+    dataTableCoordinator()
+}
+
+# Resolve sample-select step into the set of children participating. For a
+# plain giotto, sample-select is a no-op (returns NA to signal "no
+# multi-scope"); for giottoMulti, returns the intersection of selected names
+# with available children.
+#' @keywords internal
+#' @noRd
+.resolve_sample_select <- function(gobject, view) {
+    if (is.null(view)) return(NA)
+    ss_steps <- Filter(function(s) inherits(s, "viewSampleSelect"),
+        view@steps)
+    if (length(ss_steps) == 0L) return(NA)
+    if (!inherits(gobject, "giottoMulti")) {
+        warning(call. = FALSE,
+            "selectSamples step ignored: parent is not a giottoMulti")
+        return(NA)
+    }
+    sel <- unique(unlist(lapply(ss_steps, function(s) s@samples)))
+    avail <- names(gobject@objects)
+    bad <- setdiff(sel, avail)
+    if (length(bad) > 0L) {
+        warning(call. = FALSE, sprintf(
+            "selectSamples: missing children ignored (%s)",
+            paste(bad, collapse = ", ")))
+    }
+    intersect(sel, avail)
+}
+
+# Free-var names in `predicate` that aren't resolvable from `env` — these
+# are the actual data-column references that need to be pulled via
+# spatValues. Names that DO resolve in `env` (closure-captured values like
+# `target` in `subset(cluster == target)`, plus base/global functions like
+# `c`, `%in%`, etc.) are filtered out; they resolve naturally at eval time
+# via the enclos chain.
+#
+# NSE caveat: if a user has a binding in their env that shadows a real
+# column name, we'd treat it as a closure value (drop from column lookup)
+# rather than a column ref. Same ambiguity as dplyr's `mutate(df, x = x)`.
+#' @keywords internal
+#' @noRd
+.predicate_column_refs <- function(predicate, env) {
+    candidates <- all.vars(predicate)
+    Filter(function(v) !exists(v, envir = env, inherits = TRUE), candidates)
+}
+
+# Evaluate one viewFilter step against the parent gobject via spatValues and
+# return the surviving cell_ID vector. Predicates that reference columns not
+# co-existing in a single artifact raise via spatValues' own contract.
+#' @keywords internal
+#' @noRd
+.eval_view_filter <- function(step, gobject) {
+    cols <- .predicate_column_refs(step@predicate, step@env)
+    if (length(cols) == 0L) {
+        # purely constant / env-resident predicate; pull all cell_IDs
+        # and let eval decide
+        cell_ids <- spatIDs(gobject)
+        keep <- eval(step@predicate, envir = list(), enclos = step@env)
+        return(if (isTRUE(keep)) cell_ids else character())
+    }
+    sv_args <- c(list(gobject = gobject, feats = cols), step@scope_args)
+    sv <- do.call(spatValues, sv_args)
+    # evaluate predicate against the spatValues data.table; env-resident
+    # closure vars resolve via the enclos chain
+    keep <- eval(step@predicate, envir = sv, enclos = step@env)
+    if (!is.logical(keep)) {
+        stop("viewFilter predicate did not evaluate to a logical vector",
+            call. = FALSE)
+    }
+    sv[["cell_ID"]][which(keep)]
+}
+
+# Resolve the space (if any) referenced by a view, normalising the
+# explicit `space` argument passed to materialize() / resolveSubobject().
+# Accepts: NULL (no space), a giottoSpace, or a character name to look up
+# on the gobject. Falls back to the view's `@space` reference if explicit
+# is NULL.
+#' @keywords internal
+#' @noRd
+.resolve_view_space <- function(gobject, view, explicit_space = NULL) {
+    if (!is.null(explicit_space)) {
+        if (inherits(explicit_space, "giottoSpace")) return(explicit_space)
+        if (is.character(explicit_space)) {
+            return(giottoSpace(gobject, explicit_space))
+        }
+        stop("`space` must be NULL, a character(1), or a giottoSpace",
+            call. = FALSE)
+    }
+    if (!is.null(view) && !is.na(view@space)) {
+        return(giottoSpace(gobject, view@space))
+    }
+    NULL
+}
+
+# Pick the right sample key from a giottoSpace for the current gobject.
+# Single-giotto: prefer ":default:", else the only key, else NULL (no
+# matching transform). Multi-giotto child resolution handled by caller.
+#' @keywords internal
+#' @noRd
+.space_sample_key_for <- function(gobject, space) {
+    if (is.null(space)) return(NULL)
+    keys <- names(space@samples)
+    if (length(keys) == 0L) return(NULL)
+    if (.space_default_sample %in% keys) return(.space_default_sample)
+    if (length(keys) == 1L) return(keys[[1L]])
+    NULL
+}
+
+# Apply a giottoSpace's transforms to a subobject via existing eager
+# GiottoClass dispatch. Each spaceTransform step becomes
+# `do.call(op, c(list(x = subobj), args))`. No-op if space is NULL or no
+# matching sample key.
+#' @keywords internal
+#' @noRd
+.apply_space_to_subobj <- function(subobj, gobject, space, coordinator) {
+    if (is.null(space)) return(subobj)
+    key <- .space_sample_key_for(gobject, space)
+    if (is.null(key)) return(subobj)
+    steps <- space@samples[[key]]
+    for (step in steps) {
+        subobj <- do.call(step@op, c(list(x = subobj), step@args))
+    }
+    subobj
+}
+
+# Given a spatLocs data.table (with cell_ID, sdimx, sdimy) and an extent
+# (numeric length 4 / SpatExtent / coercible), return cell_IDs whose
+# coordinates fall inside.
+#' @keywords internal
+#' @noRd
+.cells_in_extent <- function(sl_dt, extent) {
+    ext <- if (inherits(extent, "SpatExtent")) extent[] else as.numeric(extent)
+    checkmate::assert_numeric(ext, len = 4L, any.missing = FALSE,
+        .var.name = "extent")
+    xmin <- ext[[1L]]; xmax <- ext[[2L]]
+    ymin <- ext[[3L]]; ymax <- ext[[4L]]
+    in_ext <- sl_dt$sdimx >= xmin & sl_dt$sdimx <= xmax &
+              sl_dt$sdimy >= ymin & sl_dt$sdimy <= ymax
+    sl_dt$cell_ID[in_ext]
+}
+
+# Pull the gobject's spatLocs (active spat_unit) as a data.table, optionally
+# applying the relevant space's transforms first. Used by .surviving_cell_ids
+# for crop-step interpretation.
+#' @keywords internal
+#' @noRd
+.get_projected_spatlocs <- function(gobject, space, coordinator) {
+    sl <- tryCatch(getSpatialLocations(gobject, output = "spatLocsObj"),
+        error = function(e) NULL)
+    if (is.null(sl)) return(NULL)
+    if (!is.null(space)) {
+        sl <- .apply_space_to_subobj(sl, gobject, space, coordinator)
+    }
+    sl@coordinates
+}
+
+# JIT helper for getters: apply view/space projection to a single subobject
+# fetched by an accessor. Returns the subobject unchanged if neither view
+# nor space is supplied. Normalises character `view` / `space` lookups
+# against the gobject; picks the default resolver from `gobject@source`.
+#
+# Use at the tail of a getter:
+#   obj <- getterLogic(...)
+#   obj <- .apply_view_space(obj, gobject, view, space)
+#   return(obj)
+#' @keywords internal
+#' @noRd
+.apply_view_space <- function(subobj, gobject, view = NULL, space = NULL,
+                              coordinator = NULL) {
+    if (is.null(view) && is.null(space)) return(subobj)
+    v <- if (is.character(view)) giottoView(gobject, view) else view
+    s <- .resolve_view_space(gobject, v, space)
+    c <- if (is.null(coordinator)) .default_view_coordinator(gobject)
+        else coordinator
+    resolveSubobject(subobj, gobject, v, s, c)
+}
+
+
+# Per-call cache for expensive computations (currently just the surviving
+# cell_ID set). Created by materialize() at entry; threaded through
+# resolveSubobject via `.cache` in `...`. Each materialize call gets a
+# fresh env; JIT getter calls that don't pass a cache just recompute.
+#
+# Scope: per-materialize-call. Persistent caching across calls needs a
+# version-stamp invalidation scheme (deferred — see design memory).
+#' @keywords internal
+#' @noRd
+.new_resolver_cache <- function() new.env(parent = emptyenv())
+
+# Memoising wrapper around .surviving_cell_ids. Reads/writes through `cache`
+# if supplied; falls back to a direct call when cache is NULL.
+#' @keywords internal
+#' @noRd
+.cached_surviving_cell_ids <- function(gobject, view, space, coordinator,
+                                       cache = NULL) {
+    if (is.null(cache)) {
+        return(.surviving_cell_ids(gobject, view, space, coordinator))
+    }
+    if (exists("surviving_ids", envir = cache, inherits = FALSE)) {
+        return(get("surviving_ids", envir = cache))
+    }
+    ids <- .surviving_cell_ids(gobject, view, space, coordinator)
+    assign("surviving_ids", ids, envir = cache)
+    ids
+}
+
+# Compute the cell_ID set that survives a view's filter + crop + sample
+# select steps. Returns a character vector of cell_IDs; NULL means "no
+# narrowing" (all cells survive).
+#' @keywords internal
+#' @noRd
+.surviving_cell_ids <- function(gobject, view, space, coordinator) {
+    if (is.null(view)) return(NULL)
+
+    filter_steps <- Filter(function(s) inherits(s, "viewFilter"), view@steps)
+    crop_steps   <- Filter(function(s) inherits(s, "viewCrop"),   view@steps)
+
+    if (length(filter_steps) == 0L && length(crop_steps) == 0L) return(NULL)
+
+    surviving <- spatIDs(gobject)
+    for (step in filter_steps) {
+        keep <- .eval_view_filter(step, gobject)
+        surviving <- intersect(surviving, keep)
+    }
+    if (length(crop_steps) > 0L) {
+        sl_dt <- .get_projected_spatlocs(gobject, space, coordinator)
+        if (is.null(sl_dt)) {
+            warning("viewCrop step skipped: no spatial locations available",
+                call. = FALSE)
+        } else {
+            for (step in crop_steps) {
+                keep <- .cells_in_extent(sl_dt, step@extent)
+                surviving <- intersect(surviving, keep)
+            }
+        }
+    }
+    surviving
+}
+
+
+# Tabular subobject methods (dataTableCoordinator) ####
+# Tabular subobjects (cellMetaObj, exprObj, dimObj, spatEnrObj) narrow by
+# the surviving cell_ID set and are otherwise untouched by space transforms
+# (which are no-ops on non-spatial data).
+#
+# Note: for dataTableCoordinator, `prepareIds()` is the identity transform,
+# so these methods consume `keep` directly via `%in%`. Backed coordinators
+# (duckDB / sedona) register their own resolveSubobject methods that route
+# through `prepareIds()` to promote the ID set into a JOIN-able table
+# reference before applying it.
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "cellMetaObj", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        cache <- list(...)$.cache
+        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        if (is.null(keep)) return(subobj)
+        out <- subobj
+        out@metaDT <- subobj@metaDT[cell_ID %in% keep]
+        out
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "exprObj", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        cache <- list(...)$.cache
+        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        if (is.null(keep)) return(subobj)
+        m <- subobj@exprMat
+        # expression matrices are features x cells; narrow columns
+        out <- subobj
+        sel <- intersect(colnames(m), keep)
+        out@exprMat <- m[, sel, drop = FALSE]
+        out
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "dimObj", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        cache <- list(...)$.cache
+        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        if (is.null(keep)) return(subobj)
+        coords <- subobj@coordinates
+        # dim reductions are cells x dims; rownames are cell_IDs
+        sel <- intersect(rownames(coords), keep)
+        out <- subobj
+        out@coordinates <- coords[sel, , drop = FALSE]
+        out
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "spatEnrObj", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        cache <- list(...)$.cache
+        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        if (is.null(keep)) return(subobj)
+        out <- subobj
+        out@enrichDT <- subobj@enrichDT[cell_ID %in% keep]
+        out
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "featMetaObj", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        # Feature metadata is feat-keyed, not cell-keyed. View filters that
+        # carry `feat_ids` in their scope_args could narrow it; otherwise
+        # featMetaObj passes through untouched.
+        # (Defer feat_ids narrowing to when an actual use case demands it.)
+        subobj
+    }
+)
+
+
+# Spatial subobject methods (dataTableCoordinator) ####
+# Spatial subobjects narrow by surviving cell_IDs (where cell-keyed) AND
+# apply the space's transforms via existing eager GiottoClass dispatch.
+# Crop is interpreted via the surviving cell_ID set (centroid-in-extent
+# semantics) for cell-keyed spatial subobjects; for non-cell-keyed
+# (points, images), crop is applied geometrically at the subobject level.
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "spatLocsObj", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        cache <- list(...)$.cache
+        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        if (!is.null(keep)) {
+            subobj@coordinates <- subobj@coordinates[cell_ID %in% keep]
+        }
+        .apply_space_to_subobj(subobj, gobject, space, coordinator)
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "giottoPolygon", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        cache <- list(...)$.cache
+        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        if (!is.null(keep)) {
+            # Polygon's poly_ID is conventionally aligned with cell_ID
+            # for the cells spat_unit. Narrow spatVector by poly_ID
+            # intersection. (Unlinked-poly cascade is out of scope.)
+            sv <- subobj@spatVector
+            if (!is.null(sv) && "poly_ID" %in% names(sv)) {
+                subobj@spatVector <- sv[sv$poly_ID %in% keep, ]
+            }
+            if (!is.null(subobj@spatVectorCentroids) &&
+                "poly_ID" %in% names(subobj@spatVectorCentroids)) {
+                subobj@spatVectorCentroids <- subobj@spatVectorCentroids[
+                    subobj@spatVectorCentroids$poly_ID %in% keep, ]
+            }
+            # Cached ID list, if present
+            if (length(subobj@unique_ID_cache) > 0L) {
+                subobj@unique_ID_cache <- intersect(
+                    subobj@unique_ID_cache, keep)
+            }
+        }
+        .apply_space_to_subobj(subobj, gobject, space, coordinator)
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "giottoPoints", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        # Points are not cell-keyed; viewFilter cell narrowing doesn't
+        # apply directly. viewCrop applies geometrically at the subobject
+        # level via terra::crop on the spatVector.
+        if (!is.null(view)) {
+            crop_steps <- Filter(function(s) inherits(s, "viewCrop"),
+                view@steps)
+            # Apply crop in the post-transform frame: transform first,
+            # then crop in that frame
+            subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
+            for (step in crop_steps) {
+                subobj <- crop(subobj, step@extent)
+            }
+            return(subobj)
+        }
+        .apply_space_to_subobj(subobj, gobject, space, coordinator)
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "giottoLargeImage", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        if (!is.null(view)) {
+            crop_steps <- Filter(function(s) inherits(s, "viewCrop"),
+                view@steps)
+            subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
+            for (step in crop_steps) {
+                subobj <- crop(subobj, step@extent)
+            }
+            return(subobj)
+        }
+        .apply_space_to_subobj(subobj, gobject, space, coordinator)
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "giottoAffineImage", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        if (!is.null(view)) {
+            crop_steps <- Filter(function(s) inherits(s, "viewCrop"),
+                view@steps)
+            subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
+            for (step in crop_steps) {
+                subobj <- crop(subobj, step@extent)
+            }
+            return(subobj)
+        }
+        .apply_space_to_subobj(subobj, gobject, space, coordinator)
+    }
+)
+
+#' @rdname resolveSubobject
+#' @export
+setMethod("resolveSubobject",
+    signature(subobj = "giottoImage", coordinator = "dataTableCoordinator"),
+    function(subobj, gobject, view, space, coordinator, ...) {
+        if (!is.null(view)) {
+            crop_steps <- Filter(function(s) inherits(s, "viewCrop"),
+                view@steps)
+            subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
+            for (step in crop_steps) {
+                subobj <- crop(subobj, step@extent)
+            }
+            return(subobj)
+        }
+        .apply_space_to_subobj(subobj, gobject, space, coordinator)
+    }
+)

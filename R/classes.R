@@ -153,6 +153,16 @@ updateGiottoObject <- function(gobject) {
         gobject <- .update_network_slots(gobject)
     }
 
+    # GiottoClass 0.7.0 adds @view (subset/narrowing recipes) and @spaces
+    # (coordinate-frame recipes). Legacy serialized gobjects deserialize
+    # with the slots already filled by the class prototype (NULL); these
+    # helpers normalise the attribute presence to mirror
+    # `.update_source_slot()`.
+    if (.gversion(gobject) < "0.7.0") {
+        gobject <- .update_view_slot(gobject)
+        gobject <- .update_spaces_slot(gobject)
+    }
+
     # -------------------------------------------------------------------------#
 
     # subobject updates
@@ -298,6 +308,25 @@ updateGiottoObject <- function(gobject) {
     x
 }
 
+# for updating pre-0.7.0 objects: add empty @view slot for slotted
+# giottoView recipes. The slot is NULL by prototype; this helper normalises
+# legacy objects where the slot may be absent at the attribute level.
+.update_view_slot <- function(x) {
+    checkmate::assert_class(x, "giotto")
+    if (is.null(attr(x, "view"))) attr(x, "view") <- list()
+    x@view <- NULL
+    x
+}
+
+# for updating pre-0.7.0 objects: add empty @spaces slot for slotted
+# giottoSpace recipes (coordinate-frame transforms).
+.update_spaces_slot <- function(x) {
+    checkmate::assert_class(x, "giotto")
+    if (is.null(attr(x, "spaces"))) attr(x, "spaces") <- list()
+    x@spaces <- NULL
+    x
+}
+
 # for updating pre-0.6.0 objects: slot renames on spatNetData / nnData
 # plus DT -> igraph canonicalization of spatialNetworkObj content.
 # Legacy data sits at attr() level under the OLD slot names because R's
@@ -404,6 +433,10 @@ updateGiottoObject <- function(gobject) {
 #' @slot join_info information about joined Giotto objects
 #' @slot multiomics multiomics integration results
 #' @slot h5_file path to h5 file
+#' @slot view named list of slotted `giottoView` recipes (read-only
+#' subset/narrowing). See [giottoView-class].
+#' @slot spaces named list of slotted `giottoSpace` recipes (opt-in
+#' coordinate-frame transforms). See [giottoSpace-class].
 #' @slot misc miscellaneous or unstructured data
 #' @details
 #'
@@ -459,6 +492,8 @@ giotto <- setClass(
         multiomics = "ANY",
         source = "ANY",
         h5_file = "ANY",
+        view = "nullOrList",
+        spaces = "nullOrList",
         misc = "list"
     ),
     prototype = list(
@@ -485,6 +520,8 @@ giotto <- setClass(
         multiomics = NULL,
         source = NULL,
         h5_file = NULL,
+        view = NULL,
+        spaces = NULL,
         misc = list()
     )
 
@@ -564,6 +601,12 @@ setClass(
         misc = list()
     )
 )
+# Note: `@view` is intentionally NOT mirrored onto `packedGiotto`. The
+# packed/wrap-vect serialization path is on a deprecation track; new slots
+# should land on `giotto` only and skip the packed mirror. The wrap/vect
+# methods skip `@view` explicitly (see methods-wrap.R) so a round-trip via
+# wrap()+vect() drops slotted views; saveGiotto/loadGiotto is the supported
+# persistence path going forward.
 
 
 

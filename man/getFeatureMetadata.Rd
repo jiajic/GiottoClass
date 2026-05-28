@@ -14,7 +14,9 @@ getFeatureMetadata(gobject, ...)
   feat_type = NULL,
   output = c("featMetaObj", "data.table"),
   copy_obj = TRUE,
-  set_defaults = TRUE
+  set_defaults = TRUE,
+  view = NULL,
+  space = NULL
 )
 
 \S4method{getFeatureMetadata}{giottoMulti}(
@@ -42,6 +44,12 @@ getFeatureMetadata(gobject, ...)
 \item{set_defaults}{set default spat_unit and feat_type. Change to FALSE
 only when
 expression and spat_info are not expected to exist.}
+
+\item{view}{optional \code{giottoView} or character(1) name of a slotted view}
+
+\item{space}{optional \code{giottoSpace} or character(1) name of a slotted
+space (accepted for API symmetry; feature metadata is feat-keyed so
+view/space are typically no-ops here)}
 }
 \value{
 a data.table or featMetaObj

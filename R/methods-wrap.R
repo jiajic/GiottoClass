@@ -50,7 +50,12 @@ setMethod(
     function(x) {
         pg <- new("packedGiotto")
         g_slots <- methods::slotNames("giotto")
-        g_slots <- g_slots[!g_slots %in% c("spatial_info", "feat_info")]
+        # `view`, `spaces`, and `source` are not mirrored on packedGiotto
+        # (the packed/wrap serialization path is on a deprecation track;
+        # new giotto slots are not back-ported). saveGiotto/loadGiotto is
+        # the supported persistence route for all three.
+        g_slots <- g_slots[!g_slots %in%
+            c("spatial_info", "feat_info", "view", "spaces", "source")]
         for (g_slot in g_slots) {
             slot(pg, g_slot) <- slot(x, g_slot)
         }
@@ -146,7 +151,11 @@ setMethod(
     function(x) {
         gobj <- new("giotto")
         g_slots <- methods::slotNames("giotto")
-        g_slots <- g_slots[!g_slots %in% c("spatial_info", "feat_info")]
+        # `view`, `spaces`, and `source` are dropped on wrap (packed/wrap is
+        # on a deprecation track); leave them at their prototype defaults
+        # (NULL).
+        g_slots <- g_slots[!g_slots %in%
+            c("spatial_info", "feat_info", "view", "spaces", "source")]
         for (g_slot in g_slots) {
             slot(gobj, g_slot) <- slot(x, g_slot)
         }

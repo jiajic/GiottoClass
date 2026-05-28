@@ -8,7 +8,13 @@
 \usage{
 getGiottoImage(gobject, ...)
 
-\S4method{getGiottoImage}{giotto}(gobject, image_type = NULL, name = NULL)
+\S4method{getGiottoImage}{giotto}(
+  gobject,
+  image_type = NULL,
+  name = NULL,
+  view = NULL,
+  space = NULL
+)
 
 \S4method{getGiottoImage}{giottoMulti}(gobject, object = NULL, ...)
 }

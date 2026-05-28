@@ -470,13 +470,21 @@ setGeneric("getCellMetadata",
     function(gobject, ...) standardGeneric("getCellMetadata"))
 
 #' @rdname getCellMetadata
+#' @param view optional `giottoView` or character(1) name of a slotted
+#'   view; when supplied, the returned subobject is projected through the
+#'   view's narrowing recipe via [resolveSubobject()]
+#' @param space optional `giottoSpace` or character(1) name of a slotted
+#'   space; when supplied, applied alongside `view` (spaces are no-ops on
+#'   tabular subobjects but the param is accepted for API symmetry)
 #' @export
 setMethod("getCellMetadata", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     output = c("cellMetaObj", "data.table"),
     copy_obj = TRUE,
-    set_defaults = TRUE) {
+    set_defaults = TRUE,
+    view = NULL,
+    space = NULL) {
     output <- match.arg(output, choices = c("cellMetaObj", "data.table"))
 
     if (isTRUE(set_defaults)) {
@@ -495,6 +503,7 @@ setMethod("getCellMetadata", signature("gAny"), function(gobject,
     if (isTRUE(copy_obj)) cellMeta[] <- data.table::copy(cellMeta[])
 
     cellMeta <- .gm_apply_view(cellMeta, gobject)
+    cellMeta <- .apply_view_space(cellMeta, gobject, view, space)
 
     if (output == "cellMetaObj") return(cellMeta)
     if (output == "data.table") return(slot(cellMeta, "metaDT"))
@@ -683,13 +692,19 @@ setGeneric("getFeatureMetadata",
     function(gobject, ...) standardGeneric("getFeatureMetadata"))
 
 #' @rdname getFeatureMetadata
+#' @param view optional `giottoView` or character(1) name of a slotted view
+#' @param space optional `giottoSpace` or character(1) name of a slotted
+#'   space (accepted for API symmetry; feature metadata is feat-keyed so
+#'   view/space are typically no-ops here)
 #' @export
 setMethod("getFeatureMetadata", signature("gAny"), function(gobject,
     spat_unit = NULL,
     feat_type = NULL,
     output = c("featMetaObj", "data.table"),
     copy_obj = TRUE,
-    set_defaults = TRUE) {
+    set_defaults = TRUE,
+    view = NULL,
+    space = NULL) {
     output <- match.arg(output, choices = c("featMetaObj", "data.table"))
 
     if (isTRUE(set_defaults)) {
@@ -706,6 +721,7 @@ setMethod("getFeatureMetadata", signature("gAny"), function(gobject,
     if (isTRUE(copy_obj)) featMeta[] <- data.table::copy(featMeta[])
 
     featMeta <- .gm_apply_view(featMeta, gobject)
+    featMeta <- .apply_view_space(featMeta, gobject, view, space)
 
     if (output == "featMetaObj") return(featMeta)
     if (output == "data.table") return(featMeta[])
@@ -884,6 +900,11 @@ setGeneric("getExpression",
     function(gobject, ...) standardGeneric("getExpression"))
 
 #' @rdname getExpression
+#' @param view optional `giottoView` or character(1) name of a slotted view;
+#'   when supplied, the returned expression is narrowed to the cell set the
+#'   view defines via [resolveSubobject()]
+#' @param space optional `giottoSpace` or character(1) name of a slotted
+#'   space; accepted for API symmetry (no-op on expression — tabular)
 #' @export
 setMethod("getExpression", signature("gAny"), function(
         gobject,
@@ -891,7 +912,9 @@ setMethod("getExpression", signature("gAny"), function(
         spat_unit = NULL,
         feat_type = NULL,
         output = c("exprObj", "matrix"),
-        set_defaults = TRUE) {
+        set_defaults = TRUE,
+        view = NULL,
+        space = NULL) {
     output <- match.arg(output, choices = c("exprObj", "matrix"))
 
     if (isTRUE(set_defaults)) {
@@ -937,6 +960,7 @@ setMethod("getExpression", signature("gAny"), function(
     expr_vals <- gobject@expression[[spat_unit]][[feat_type]][[values]]
 
     expr_vals <- .gm_apply_view(expr_vals, gobject)
+    expr_vals <- .apply_view_space(expr_vals, gobject, view, space)
 
     # Output
     if (output == "exprObj") {
@@ -1319,6 +1343,12 @@ setGeneric("getSpatialLocations",
     function(gobject, ...) standardGeneric("getSpatialLocations"))
 
 #' @rdname getSpatialLocations
+#' @param view optional `giottoView` or character(1) name of a slotted view;
+#'   when supplied, returned spatial locations are narrowed via
+#'   [resolveSubobject()]
+#' @param space optional `giottoSpace` or character(1) name of a slotted
+#'   space; when supplied, the recorded transforms are applied to the
+#'   returned coordinates
 #' @export
 setMethod("getSpatialLocations", signature("giotto"), function(gobject,
     spat_unit = NULL,
@@ -1327,7 +1357,9 @@ setMethod("getSpatialLocations", signature("giotto"), function(gobject,
     copy_obj = TRUE,
     verbose = TRUE,
     set_defaults = TRUE,
-    simplify = TRUE) {
+    simplify = TRUE,
+    view = NULL,
+    space = NULL) {
     output <- match.arg(output, choices = c("spatLocsObj", "data.table"))
     all_su <- identical(spat_unit, ":all:")
 
@@ -1381,6 +1413,7 @@ setMethod("getSpatialLocations", signature("giotto"), function(gobject,
 
     out <- lapply(out, function(x) {
         if (isTRUE(copy_obj)) x[] <- data.table::copy(x[])
+        x <- .apply_view_space(x, gobject, view, space)
         switch(output, "spatLocsObj" = x, "data.table" = x[])
     })
     if (isTRUE(simplify)) out <- .simplify_list(out)
@@ -1560,6 +1593,10 @@ setGeneric("getDimReduction",
     function(gobject, ...) standardGeneric("getDimReduction"))
 
 #' @rdname getDimReduction
+#' @param view optional `giottoView` or character(1) name of a slotted view;
+#'   narrows returned cells via [resolveSubobject()]
+#' @param space optional `giottoSpace` or character(1) (no-op on dim
+#'   reductions; accepted for API symmetry)
 #' @export
 setMethod("getDimReduction", signature("gAny"), function(gobject,
     spat_unit = NULL,
@@ -1568,7 +1605,9 @@ setMethod("getDimReduction", signature("gAny"), function(gobject,
     reduction_method = NULL,
     name = NULL,
     output = c("dimObj", "matrix"),
-    set_defaults = TRUE) {
+    set_defaults = TRUE,
+    view = NULL,
+    space = NULL) {
     # back-compat: "data.table" used to be accepted for matrix output
     if (!identical(output, c("dimObj", "matrix"))) {
         if (output == "data.table") output <- "matrix"
@@ -1614,6 +1653,7 @@ setMethod("getDimReduction", signature("gAny"), function(gobject,
         spat_unit]][[feat_type]][[reduction_method]][[name]]
 
     reduction_res <- .gm_apply_view(reduction_res, gobject)
+    reduction_res <- .apply_view_space(reduction_res, gobject, view, space)
 
     if (output == "dimObj") return(reduction_res)
     if (output == "matrix") return(slot(reduction_res, "coordinates"))
@@ -2473,13 +2513,21 @@ setGeneric("getPolygonInfo",
     function(gobject, ...) standardGeneric("getPolygonInfo"))
 
 #' @rdname getPolygonInfo
+#' @param view optional `giottoView` or character(1) name of a slotted view;
+#'   when supplied, returned polygons are narrowed by surviving cell set via
+#'   [resolveSubobject()]
+#' @param space optional `giottoSpace` or character(1) name of a slotted
+#'   space; when supplied, the recorded transforms are applied to the
+#'   returned polygon geometry
 #' @export
 setMethod("getPolygonInfo", signature("giotto"), function(gobject,
     polygon_name = NULL,
     polygon_overlap = NULL,
     return_giottoPolygon = FALSE,
     verbose = TRUE,
-    simplify = TRUE) {
+    simplify = TRUE,
+    view = NULL,
+    space = NULL) {
     slotdata <- slot(gobject, "spatial_info")
     potential_names <- names(slotdata)
 
@@ -2515,6 +2563,10 @@ setMethod("getPolygonInfo", signature("giotto"), function(gobject,
 
     names(slotdata) <- NULL
     out <- lapply(slotdata, function(x) {
+        # Apply view/space projection to the giottoPolygon BEFORE any
+        # output coercion so both `return_giottoPolygon = TRUE` and
+        # the SpatVector / overlap-table paths see the projected data.
+        x <- .apply_view_space(x, gobject, view, space)
         if (isTRUE(return_giottoPolygon)) return(x)
         if (!is.null(polygon_overlap)) {
             ovlp_data <- slot(x, "overlaps")
@@ -2710,12 +2762,20 @@ setGeneric("getFeatureInfo",
     function(gobject, ...) standardGeneric("getFeatureInfo"))
 
 #' @rdname getFeatureInfo
+#' @param view optional `giottoView` or character(1) name of a slotted view;
+#'   applies any crop step to the points via [resolveSubobject()]. Points are
+#'   not cell-keyed so subset predicates do not cascade here.
+#' @param space optional `giottoSpace` or character(1) name of a slotted
+#'   space; when supplied, recorded transforms are applied to the points
+#'   geometry
 #' @export
 setMethod("getFeatureInfo", signature("giotto"), function(gobject,
     feat_type = NULL,
     return_giottoPoints = FALSE,
     set_defaults = TRUE,
-    simplify = TRUE) {
+    simplify = TRUE,
+    view = NULL,
+    space = NULL) {
     if (isTRUE(set_defaults)) {
         feat_type <- set_default_feat_type(
             gobject = gobject,
@@ -2747,6 +2807,7 @@ setMethod("getFeatureInfo", signature("giotto"), function(gobject,
 
     names(slotdata) <- NULL
     out <- lapply(slotdata, function(x) {
+        x <- .apply_view_space(x, gobject, view, space)
         if (isTRUE(return_giottoPoints)) return(x)
         x[] # spatVector
     })
@@ -2910,6 +2971,10 @@ setGeneric("getSpatialEnrichment",
     function(gobject, ...) standardGeneric("getSpatialEnrichment"))
 
 #' @rdname getSpatialEnrichment
+#' @param view optional `giottoView` or character(1) name of a slotted view;
+#'   narrows enrichment rows by surviving cell set via [resolveSubobject()]
+#' @param space optional `giottoSpace` or character(1) (no-op; accepted for
+#'   API symmetry)
 #' @export
 setMethod("getSpatialEnrichment", signature("gAny"), function(gobject,
     spat_unit = NULL,
@@ -2917,7 +2982,9 @@ setMethod("getSpatialEnrichment", signature("gAny"), function(gobject,
     name = "DWLS",
     output = c("spatEnrObj", "data.table"),
     copy_obj = TRUE,
-    set_defaults = TRUE) {
+    set_defaults = TRUE,
+    view = NULL,
+    space = NULL) {
     output <- match.arg(output, choices = c("spatEnrObj", "data.table"))
 
     if (isTRUE(set_defaults)) {
@@ -2962,6 +3029,7 @@ setMethod("getSpatialEnrichment", signature("gAny"), function(gobject,
     if (isTRUE(copy_obj)) enr_res[] <- data.table::copy(enr_res[])
 
     enr_res <- .gm_apply_view(enr_res, gobject)
+    enr_res <- .apply_view_space(enr_res, gobject, view, space)
 
     if (output == "spatEnrObj") return(enr_res)
     if (output == "data.table") return(enr_res[])
@@ -3132,10 +3200,16 @@ setGeneric("getGiottoImage",
 #' @export
 setMethod("getGiottoImage", signature("giotto"), function(gobject,
     image_type = NULL,
-    name = NULL) {
+    name = NULL,
+    view = NULL,
+    space = NULL) {
     if (identical(name, ":all:")) {
         all_imgs <- gobject@images
         if (length(all_imgs) == 0L) all_imgs <- NULL
+        if (!is.null(all_imgs) && (!is.null(view) || !is.null(space))) {
+            all_imgs <- lapply(all_imgs, .apply_view_space,
+                gobject = gobject, view = view, space = space)
+        }
         return(all_imgs)
     }
 
@@ -3156,6 +3230,15 @@ setMethod("getGiottoImage", signature("giotto"), function(gobject,
 
     g_img <- gobject@images[name]
     if (length(g_img) == 1) g_img <- g_img[[1L]]
+
+    if (!is.null(view) || !is.null(space)) {
+        if (is.list(g_img) && !isS4(g_img)) {
+            g_img <- lapply(g_img, .apply_view_space,
+                gobject = gobject, view = view, space = space)
+        } else {
+            g_img <- .apply_view_space(g_img, gobject, view, space)
+        }
+    }
 
     return(g_img)
 })
