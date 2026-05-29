@@ -74,20 +74,39 @@ setMethod("prepareIds", signature(coordinator = "dataTableCoordinator"),
 
 # Helpers ####
 
+#' @title defaultViewCoordinator
+#' @name defaultViewCoordinator
+#' @description Pick the default [viewCoordinator-class] for resolving views
+#' on a `gobject` whose source is `source`. GiottoClass provides the
+#' `ANY`-signature method returning [dataTableCoordinator-class] (in-memory
+#' reference). Downstream packages register their own coordinators by
+#' adding methods for their source class — e.g. GiottoDisk registers a
+#' `gsource` method returning `parquetCoordinator()`. S4 inheritance picks
+#' up subclasses automatically.
+#'
+#' @param source the `@source` slot of the gobject (`NULL` is handled
+#'   upstream by `.default_view_coordinator()`)
+#' @param ... reserved
+#' @returns a `viewCoordinator`-inheriting object
+#' @export
+setGeneric("defaultViewCoordinator",
+    function(source, ...) standardGeneric("defaultViewCoordinator"))
+
+#' @rdname defaultViewCoordinator
+#' @export
+setMethod("defaultViewCoordinator", signature(source = "ANY"),
+    function(source, ...) dataTableCoordinator()
+)
+
 # Resolve which `coordinator` to use when the caller doesn't pass one
-# explicitly. In-memory by default; downstream packages (e.g. GiottoDisk)
-# can override by extending this dispatch via S3 on the `@source` class.
+# explicitly. In-memory by default for sourceless gobjects; otherwise
+# dispatch on the source class via [defaultViewCoordinator()].
 #' @keywords internal
 #' @noRd
 .default_view_coordinator <- function(gobject) {
     src <- gobject@source
     if (is.null(src)) return(dataTableCoordinator())
-    # Hook for GiottoDisk: dispatch on source class via S3 method.
-    fn <- tryCatch(utils::getS3method(
-        "defaultViewCoordinator", class(src)[[1L]], optional = TRUE),
-        error = function(e) NULL)
-    if (!is.null(fn)) return(fn(src))
-    dataTableCoordinator()
+    defaultViewCoordinator(src)
 }
 
 # Resolve sample-select step into the set of children participating. For a
@@ -213,20 +232,44 @@ setMethod("prepareIds", signature(coordinator = "dataTableCoordinator"),
     subobj
 }
 
-# Given a spatLocs data.table (with cell_ID, sdimx, sdimy) and an extent
-# (numeric length 4 / SpatExtent / coercible), return cell_IDs whose
-# coordinates fall inside.
+# Given a spatLocs data.table (with cell_ID, sdimx, sdimy), a region
+# (numeric length 4 / SpatExtent / SpatVector), and a relation
+# ("intersects" by default), return cell_IDs whose centroid satisfies
+# the relation against the region.
+#
+# Strategy:
+#   * numeric / SpatExtent  → AABB-only check (fast path).
+#   * SpatVector polygon    → AABB pre-filter narrows candidates, then
+#                             terra::is.related gives the precise survival
+#                             set per the requested relation.
 #' @keywords internal
 #' @noRd
-.cells_in_extent <- function(sl_dt, extent) {
-    ext <- if (inherits(extent, "SpatExtent")) extent[] else as.numeric(extent)
-    checkmate::assert_numeric(ext, len = 4L, any.missing = FALSE,
-        .var.name = "extent")
-    xmin <- ext[[1L]]; xmax <- ext[[2L]]
-    ymin <- ext[[3L]]; ymax <- ext[[4L]]
-    in_ext <- sl_dt$sdimx >= xmin & sl_dt$sdimx <= xmax &
-              sl_dt$sdimy >= ymin & sl_dt$sdimy <= ymax
-    sl_dt$cell_ID[in_ext]
+.cells_in_region <- function(sl_dt, region, relation = "intersects") {
+    if (is.null(region)) return(sl_dt$cell_ID)
+
+    # Rectangular extent fast path — no relate() needed
+    if (!inherits(region, "SpatVector")) {
+        ext <- if (inherits(region, "SpatExtent")) region[]
+            else as.numeric(region)
+        checkmate::assert_numeric(ext, len = 4L, any.missing = FALSE,
+            .var.name = "region")
+        in_ext <- sl_dt$sdimx >= ext[[1L]] & sl_dt$sdimx <= ext[[2L]] &
+                  sl_dt$sdimy >= ext[[3L]] & sl_dt$sdimy <= ext[[4L]]
+        return(sl_dt$cell_ID[in_ext])
+    }
+
+    # Polygon path — AABB pre-filter, then terra::is.related for the precise
+    # relation. Avoids ST_Within on every point when the polygon's bbox
+    # already excludes most of them.
+    bbox <- terra::ext(region)[]
+    in_bbox <- sl_dt$sdimx >= bbox[[1L]] & sl_dt$sdimx <= bbox[[2L]] &
+               sl_dt$sdimy >= bbox[[3L]] & sl_dt$sdimy <= bbox[[4L]]
+    candidates <- sl_dt[in_bbox]
+    if (nrow(candidates) == 0L) return(character())
+    pts <- terra::vect(
+        as.matrix(candidates[, .(sdimx, sdimy)]), type = "points")
+    surv <- terra::is.related(pts, region, relation)
+    candidates$cell_ID[surv]
 }
 
 # Pull the gobject's spatLocs (active spat_unit) as a data.table, optionally
@@ -319,7 +362,7 @@ setMethod("prepareIds", signature(coordinator = "dataTableCoordinator"),
                 call. = FALSE)
         } else {
             for (step in crop_steps) {
-                keep <- .cells_in_extent(sl_dt, step@extent)
+                keep <- .cells_in_region(sl_dt, step@region, step@relation)
                 surviving <- intersect(surviving, keep)
             }
         }
@@ -481,7 +524,7 @@ setMethod("resolveSubobject",
             # then crop in that frame
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@extent)
+                subobj <- crop(subobj, step@region)
             }
             return(subobj)
         }
@@ -499,7 +542,7 @@ setMethod("resolveSubobject",
                 view@steps)
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@extent)
+                subobj <- crop(subobj, step@region)
             }
             return(subobj)
         }
@@ -517,7 +560,7 @@ setMethod("resolveSubobject",
                 view@steps)
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@extent)
+                subobj <- crop(subobj, step@region)
             }
             return(subobj)
         }
@@ -535,7 +578,7 @@ setMethod("resolveSubobject",
                 view@steps)
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@extent)
+                subobj <- crop(subobj, step@region)
             }
             return(subobj)
         }

@@ -95,17 +95,35 @@ setClass(
 )
 
 #' @title viewCrop
-#' @description Extent-based crop step. The extent is meaningful in the
-#' coordinate frame of the view's `@space` reference (or the gobject's native
-#' frame if `@space` is NA). Resolution: first apply the referenced space's
-#' transforms, then crop.
+#' @description Spatial-region narrowing step. `region` is the target
+#' geometry: a numeric extent vector (`c(xmin, xmax, ymin, ymax)`), a
+#' `SpatExtent`, or a `SpatVector` polygon. `relation` is the membership
+#' relation evaluated against cell centroids — `"intersects"` (default),
+#' `"within"`, `"contains"`, `"covers"`, etc. — any relation supported by
+#' [terra::is.related].
+#'
+#' The region is meaningful in the coordinate frame of the view's `@space`
+#' reference (or the gobject's native frame if `@space` is NA). At
+#' resolution time: apply the referenced space's transforms first, then
+#' filter cells by the relation.
+#'
+#' Implementation note: for rectangular `region`s (numeric / SpatExtent),
+#' an AABB short-circuit is used in-memory. For polygon `region`s, an AABB
+#' pre-filter narrows candidates before the precise relate check, then
+#' [terra::is.related] gives the final survival set. On disk-backed
+#' subobjects, the parquet store's existing crop machinery handles
+#' inverse-affine back-projection + AABB pushdown + half-plane filter
+#' automatically (GiottoDisk side).
 #' @keywords internal
 #' @noRd
 setClass(
     "viewCrop",
     contains = "viewStep",
-    slots = list(extent = "ANY"),
-    prototype = list(extent = NULL)
+    slots = list(
+        region = "ANY",
+        relation = "character"
+    ),
+    prototype = list(region = NULL, relation = "intersects")
 )
 
 #' @title viewSampleSelect

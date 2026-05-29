@@ -110,13 +110,25 @@ setMethod("subset", signature(x = "giottoView"),
 )
 
 
-# crop() — extent crop on views ####
+# crop() — region narrowing on views ####
+# Note: name kept as crop() for ergonomics (familiar verb), but the semantic
+# is relate-based membership, not geometric clipping. The view records the
+# region + relation; resolution narrows cells whose centroid satisfies the
+# relation against the region. For polygon regions and non-default
+# relations, terra::is.related provides the precise check; rectangular
+# extents take an AABB short-circuit. Geometry of surviving subobjects is
+# NOT modified — only the cell set narrows.
 
 #' @rdname crop
+#' @param relation `character(1)`. Spatial relation evaluated against cell
+#'   centroids. One of `"intersects"` (default), `"within"`, `"contains"`,
+#'   `"covers"`, `"covered_by"`, `"overlaps"`, `"touches"`, `"crosses"`,
+#'   `"disjoint"`. Passed through to [terra::is.related].
 #' @export
 setMethod("crop", signature(x = "giottoView", y = "ANY"),
-    function(x, y, ...) {
-        .view_record_step(x, new("viewCrop", extent = y))
+    function(x, y, relation = "intersects", ...) {
+        checkmate::assert_character(relation, len = 1L, any.missing = FALSE)
+        .view_record_step(x, new("viewCrop", region = y, relation = relation))
     }
 )
 
@@ -538,9 +550,15 @@ setMethod("show", signature("viewStep"), function(object) {
             scope))
     }
     if (inherits(step, "viewCrop")) {
-        return(sprintf("crop:      %s",
-            tryCatch(deparse(step@extent, nlines = 1L)[[1L]],
-                error = function(e) "<extent>")))
+        rel <- if (identical(step@relation, "intersects")) ""
+            else sprintf(" [%s]", step@relation)
+        region_lbl <- if (inherits(step@region, "SpatVector")) {
+            sprintf("<SpatVector: %d geoms>", length(step@region))
+        } else {
+            tryCatch(deparse(step@region, nlines = 1L)[[1L]],
+                error = function(e) "<region>")
+        }
+        return(sprintf("crop:      %s%s", region_lbl, rel))
     }
     if (inherits(step, "viewSampleSelect")) {
         return(sprintf("samples:   %s",

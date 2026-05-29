@@ -24,7 +24,7 @@
 
 \S4method{crop}{giottoPolygon,ANY}(x, y, DT = TRUE, xmin = NULL, xmax = NULL, ymin = NULL, ymax = NULL, ...)
 
-\S4method{crop}{giottoView,ANY}(x, y, ...)
+\S4method{crop}{giottoView,ANY}(x, y, relation = "intersects", ...)
 }
 \arguments{
 \item{x}{object}
@@ -52,6 +52,11 @@ path or \code{write = TRUE}.}
 
 \item{xmin, xmax, ymin, ymax}{only used if DT = TRUE. Set extent bounds
 independently}
+
+\item{relation}{\code{character(1)}. Spatial relation evaluated against cell
+centroids. One of \code{"intersects"} (default), \code{"within"}, \code{"contains"},
+\code{"covers"}, \code{"covered_by"}, \code{"overlaps"}, \code{"touches"}, \code{"crosses"},
+\code{"disjoint"}. Passed through to \link[terra:is.related]{terra::is.related}.}
 }
 \value{
 object of same class as \code{x}, spatially subsetted

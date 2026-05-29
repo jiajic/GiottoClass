@@ -69,7 +69,42 @@ test_that("crop() records a viewCrop step", {
     v <- giottoView() |> crop(c(0, 100, 0, 100))
     expect_length(v@steps, 1L)
     expect_s4_class(v@steps[[1L]], "viewCrop")
-    expect_equal(v@steps[[1L]]@extent, c(0, 100, 0, 100))
+    expect_equal(v@steps[[1L]]@region, c(0, 100, 0, 100))
+    expect_identical(v@steps[[1L]]@relation, "intersects")
+})
+
+test_that("crop() with custom relation records it", {
+    v <- giottoView() |> crop(c(0, 100, 0, 100), relation = "within")
+    expect_identical(v@steps[[1L]]@relation, "within")
+})
+
+test_that("crop() with polygon region works", {
+    poly <- terra::vect(rbind(
+        c(4000, -5000), c(5500, -5000),
+        c(5500, -3500), c(4000, -3500),
+        c(4000, -5000)
+    ), type = "polygons")
+    v <- giottoView() |> crop(poly)
+    expect_s4_class(v@steps[[1L]], "viewCrop")
+    expect_s4_class(v@steps[[1L]]@region, "SpatVector")
+})
+
+test_that("materialize with polygon crop narrows by region", {
+    g <- .fixture_giotto()
+    # build a polygon equivalent to a known extent
+    poly <- terra::vect(rbind(
+        c(4000, -5000), c(5500, -5000),
+        c(5500, -3500), c(4000, -3500),
+        c(4000, -5000)
+    ), type = "polygons")
+    # expected: cells whose centroid is within the polygon's AABB
+    sl <- getSpatialLocations(g, output = "data.table")
+    expected <- sum(sl$sdimx >= 4000 & sl$sdimx <= 5500 &
+                    sl$sdimy >= -5000 & sl$sdimy <= -3500)
+
+    v <- giottoView() |> crop(poly)
+    g2 <- materialize(g, v)
+    expect_equal(nrow(pDataDT(g2)), expected)
 })
 
 test_that("selectSamples() records a viewSampleSelect step", {
@@ -233,6 +268,45 @@ test_that(".default_view_coordinator returns dataTableCoordinator for in-memory"
 test_that("prepareIds() for dataTableCoordinator is identity", {
     ids <- c("a", "b", "c")
     expect_identical(prepareIds(dataTableCoordinator(), ids), ids)
+})
+
+test_that("defaultViewCoordinator() defaults to dataTableCoordinator for any source", {
+    # ANY signature method
+    p <- defaultViewCoordinator(NULL)  # NULL is technically ANY
+    # NULL source path goes through .default_view_coordinator's null check
+    # before reaching the generic; here we just verify the ANY method
+    # returns dataTableCoordinator for an unknown source class
+    expect_s4_class(defaultViewCoordinator(structure(list(),
+        class = "_unknown_source_class_")), "dataTableCoordinator")
+})
+
+test_that("defaultViewCoordinator() S4 dispatch is registrable from downstream", {
+    # Simulate GiottoDisk-style registration: define a fake source class
+    # and add a method returning a different coordinator. After cleanup,
+    # the method is removed so other tests aren't affected.
+    setClass("_test_fake_source_", representation = "list",
+        where = globalenv())
+    on.exit(removeClass("_test_fake_source_", where = globalenv()),
+        add = TRUE)
+
+    fake_src <- new("_test_fake_source_")
+    # default (no method registered) returns dataTableCoordinator
+    expect_s4_class(defaultViewCoordinator(fake_src), "dataTableCoordinator")
+
+    # register a method
+    setMethod("defaultViewCoordinator",
+        signature(source = "_test_fake_source_"),
+        function(source, ...) {
+            # use the existing dataTableCoordinator subclass as a stand-in
+            new("dataTableCoordinator", misc = list(marker = "downstream"))
+        },
+        where = globalenv())
+    on.exit(removeMethod("defaultViewCoordinator", "_test_fake_source_",
+        where = globalenv()), add = TRUE)
+
+    p <- defaultViewCoordinator(fake_src)
+    expect_s4_class(p, "dataTableCoordinator")
+    expect_identical(p@misc$marker, "downstream")
 })
 
 
