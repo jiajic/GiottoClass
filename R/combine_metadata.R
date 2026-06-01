@@ -96,6 +96,10 @@ combineMetadata <- function(gobject,
 #' @param gobject Giotto object
 #' @param spat_unit spatial unit
 #' @param feat_type feature type(s)
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. Threaded through to the
+#' underlying `getPolygonInfo` and `getCellMetadata` calls so the
+#' returned table reflects the view-scoped subset.
 #' @details
 #' The returned data.table has the following columns: \cr
 #' \itemize{
@@ -113,7 +117,9 @@ combineMetadata <- function(gobject,
 #' @export
 combineSpatialCellMetadataInfo <- function(gobject,
     spat_unit = NULL,
-    feat_type = NULL) {
+    feat_type = NULL,
+    view = NULL,
+    space = NULL) {
     # combine
     # 1. spatial morphology information ( = polygon)
     # 2. cell metadata
@@ -129,20 +135,30 @@ combineSpatialCellMetadataInfo <- function(gobject,
         feat_type = feat_type
     )
 
-    # get spatial cell information
-    spatial_cell_info <- data.table::as.data.table(
-        gobject@spatial_info[[spat_unit]]
+    # get spatial cell information via the view-aware getter so
+    # view/space resolution applies before SpatVector coercion.
+    sv <- getPolygonInfo(
+        gobject = gobject,
+        polygon_name = spat_unit,
+        return_giottoPolygon = FALSE,
+        view = view,
+        space = space
     )
+    spatial_cell_info <- data.table::as.data.table(sv)
 
     colnames(spatial_cell_info)[1] <- "cell_ID"
 
 
     res_list <- list()
     for (feat in unique(feat_type)) {
-        # get spatial cell metadata
-        cell_meta <- pDataDT(gobject,
+        # get spatial cell metadata (view-aware)
+        cell_meta <- getCellMetadata(
+            gobject = gobject,
             spat_unit = spat_unit,
-            feat_type = feat
+            feat_type = feat,
+            output = "data.table",
+            view = view,
+            space = space
         )
 
         # merge
@@ -185,6 +201,12 @@ combineSpatialCellMetadataInfo <- function(gobject,
 #' sometimes produce extent-filling polygons when the original geometry is
 #' problematic or invalid. Set `TRUE` to remove these, based on whether a
 #' polygon fills up most of the x and y range.
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. When supplied, each constituent
+#' subobject is fetched with the view applied (predicate / crop / sample
+#' narrowing) and the space transforms composed, before being combined.
+#' Pass through to plot functions (`view = "tumor_focus"`, etc.) when the
+#' combined table should reflect a view-scoped subset.
 #' @concept combine cell metadata
 #' @returns data.table with combined spatial information
 #' @examples
@@ -203,7 +225,9 @@ combineCellData <- function(gobject,
     ext = NULL,
     xlim = NULL,
     ylim = NULL,
-    remove_background_polygon = TRUE) {
+    remove_background_polygon = TRUE,
+    view = NULL,
+    space = NULL) {
 
     checkmate::assert_numeric(xlim, len = 2L, null.ok = TRUE)
     checkmate::assert_numeric(ylim, len = 2L, null.ok = TRUE)
@@ -232,7 +256,9 @@ combineCellData <- function(gobject,
             spat_unit = poly_info,
             name = spat_loc_name,
             output = "data.table",
-            copy_obj = TRUE
+            copy_obj = TRUE,
+            view = view,
+            space = space
         )
     } else {
         spat_locs_dt <- NULL
@@ -241,11 +267,15 @@ combineCellData <- function(gobject,
 
     ## spatial poly ##
     if (isTRUE(include_poly_info)) {
-        # get spatial poly information
+        # get spatial poly information. view/space resolution happens
+        # inside `getPolygonInfo` before SpatVector coercion (see
+        # `slot_accessors.R::getPolygonInfo` line ~2569).
         sv <- getPolygonInfo(
             gobject = gobject,
             polygon_name = poly_info,
-            return_giottoPolygon = FALSE
+            return_giottoPolygon = FALSE,
+            view = view,
+            space = space
         )
 
         e <- ext(sv)
@@ -309,7 +339,9 @@ combineCellData <- function(gobject,
             comb_dt = comb_dt,
             spat_unit = poly_info,
             feat_type = feat_type,
-            spat_enr_names = spat_enr_names
+            spat_enr_names = spat_enr_names,
+            view = view,
+            space = space
         )
     }
 
@@ -322,7 +354,9 @@ combineCellData <- function(gobject,
             gobject = gobject,
             spat_unit = poly_info,
             feat_type = feat,
-            output = "data.table"
+            output = "data.table",
+            view = view,
+            space = space
         )
 
         # merge
@@ -352,6 +386,10 @@ combineCellData <- function(gobject,
 #' @param feat_type feature type
 #' @param spat_unit spatial unit
 #' @param sel_feats selected features (default: NULL or no selection)
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. Threaded through to
+#' `getFeatureInfo` and `getFeatureMetadata` so feature-level view
+#' projections are applied before assembly.
 #' @concept combine feature metadata
 #' @returns data.table with combined spatial feature information
 #' @examples
@@ -362,7 +400,9 @@ combineCellData <- function(gobject,
 combineFeatureData <- function(gobject,
     feat_type = NULL,
     spat_unit = NULL,
-    sel_feats = NULL) {
+    sel_feats = NULL,
+    view = NULL,
+    space = NULL) {
     # data.table variables
     feat_ID <- NULL
 
@@ -388,7 +428,9 @@ combineFeatureData <- function(gobject,
         feat_info_spatvec <- getFeatureInfo(
             gobject = gobject,
             feat_type = feat,
-            return_giottoPoints = TRUE
+            return_giottoPoints = TRUE,
+            view = view,
+            space = space
         )
         if (!is.null(selected_features)) {
             feat_info_spatvec <- feat_info_spatvec[selected_features]
@@ -410,7 +452,9 @@ combineFeatureData <- function(gobject,
                 gobject = gobject,
                 spat_unit = spat,
                 feat_type = feat,
-                output = "data.table"
+                output = "data.table",
+                view = view,
+                space = space
             )
 
             if (!is.null(selected_features)) {
@@ -1168,7 +1212,9 @@ calculateSpatCellMetadataProportions <- function(gobject,
     comb_dt,
     spat_unit,
     feat_type,
-    spat_enr_names = NULL) {
+    spat_enr_names = NULL,
+    view = NULL,
+    space = NULL) {
     if (is.null(spat_enr_names)) {
         return(comb_dt)
     } # skip if not requested
@@ -1207,7 +1253,9 @@ calculateSpatCellMetadataProportions <- function(gobject,
             name = enr_name,
             output = "data.table",
             copy_obj = TRUE,
-            set_defaults = FALSE
+            set_defaults = FALSE,
+            view = view,
+            space = space
         )
     })
 
