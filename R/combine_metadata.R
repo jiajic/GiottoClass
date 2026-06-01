@@ -516,6 +516,11 @@ combineFeatureData <- function(gobject,
 #' @param feat_type feature type
 #' @param sel_feats selected features (default: NULL or no selection)
 #' @param poly_info polygon information name
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. Threaded through the underlying
+#' getFeatureMetadata / getPolygonInfo / getFeatureInfo calls — the
+#' returned table reflects the view-scoped subset. One resolver pass is
+#' shared via `materialize(slots = ...)` so the predicate evaluates once.
 #' @concept combine feature metadata
 #' @returns data.table with combined spatial polygon information
 #' @examples
@@ -526,7 +531,9 @@ combineFeatureData <- function(gobject,
 combineFeatureOverlapData <- function(gobject,
     feat_type = "rna",
     sel_feats = NULL,
-    poly_info = "cell") {
+    poly_info = "cell",
+    view = NULL,
+    space = NULL) {
     # data.table vars
     feat_ID <- NULL
 
@@ -539,6 +546,14 @@ combineFeatureOverlapData <- function(gobject,
         spat_unit = poly_info,
         feat_type = feat_type
     )
+
+    # Pre-narrow once for the slots we touch.
+    if (!is.null(view) || !is.null(space)) {
+        gobject <- materialize(gobject, view, space = space,
+            slots = c("feat_metadata", "spatial_info", "feat_info"))
+        view <- NULL
+        space <- NULL
+    }
 
 
     res_list <- list()
