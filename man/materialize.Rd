@@ -10,13 +10,13 @@
 \usage{
 materialize(gobject, view, ...)
 
-\S4method{materialize}{giotto,giottoView}(gobject, view, space = NULL, coordinator = NULL, ...)
+\S4method{materialize}{giotto,giottoView}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
 
-\S4method{materialize}{giotto,character}(gobject, view, space = NULL, coordinator = NULL, ...)
+\S4method{materialize}{giotto,character}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
 
-\S4method{materialize}{giottoMulti,giottoView}(gobject, view, space = NULL, coordinator = NULL, ...)
+\S4method{materialize}{giottoMulti,giottoView}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
 
-\S4method{materialize}{giottoMulti,character}(gobject, view, space = NULL, coordinator = NULL, ...)
+\S4method{materialize}{giottoMulti,character}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
 }
 \arguments{
 \item{gobject}{a \code{giotto} object}
@@ -32,6 +32,15 @@ may itself be \code{NA}).}
 \item{coordinator}{a \link[=viewCoordinator-class]{viewCoordinator}-inheriting object brokering
 IDs and joins between storage backings. Defaults to the coordinator
 selected from \code{gobject@source} (in-memory for non-disk gobjects).}
+
+\item{slots}{optional \code{character} vector of slot names to narrow.
+When \code{NULL} (default), all slot lists are walked (\code{cell_metadata},
+\code{expression}, \code{dimension_reduction}, \code{spatial_enrichment},
+\code{feat_metadata}, \code{spatial_locs}, \code{spatial_info}, \code{feat_info},
+\code{images}). When supplied, only the listed slots are walked — the
+rest are left untouched on the returned object. Useful for
+internal helpers that only consume a subset of slots and want to
+share one resolver pass without paying for irrelevant slots.}
 }
 \value{
 a new \code{giotto} object reflecting the resolved view

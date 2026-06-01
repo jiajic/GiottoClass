@@ -9,9 +9,7 @@
   comb_dt,
   spat_unit,
   feat_type,
-  spat_enr_names = NULL,
-  view = NULL,
-  space = NULL
+  spat_enr_names = NULL
 )
 }
 \value{
