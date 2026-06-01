@@ -135,14 +135,21 @@ combineSpatialCellMetadataInfo <- function(gobject,
         feat_type = feat_type
     )
 
+    # Pre-narrow the gobject for the slots we touch — see notes in
+    # `combineCellData`. One resolver pass, two slots narrowed.
+    if (!is.null(view) || !is.null(space)) {
+        gobject <- materialize(gobject, view, space = space,
+            slots = c("spatial_info", "cell_metadata"))
+        view <- NULL
+        space <- NULL
+    }
+
     # get spatial cell information via the view-aware getter so
     # view/space resolution applies before SpatVector coercion.
     sv <- getPolygonInfo(
         gobject = gobject,
         polygon_name = spat_unit,
-        return_giottoPolygon = FALSE,
-        view = view,
-        space = space
+        return_giottoPolygon = FALSE
     )
     spatial_cell_info <- data.table::as.data.table(sv)
 
@@ -151,14 +158,13 @@ combineSpatialCellMetadataInfo <- function(gobject,
 
     res_list <- list()
     for (feat in unique(feat_type)) {
-        # get spatial cell metadata (view-aware)
+        # get spatial cell metadata (view applied via the pre-narrow
+        # materialize call above).
         cell_meta <- getCellMetadata(
             gobject = gobject,
             spat_unit = spat_unit,
             feat_type = feat,
-            output = "data.table",
-            view = view,
-            space = space
+            output = "data.table"
         )
 
         # merge
@@ -249,6 +255,30 @@ combineCellData <- function(gobject,
     )
 
 
+    # When view/space are supplied, pre-narrow the gobject ONCE for the
+    # specific slots this combine touches via materialize(slots = ...).
+    # materialize uses one resolver cache internally, so all slot
+    # narrowings here share a single predicate evaluation. Subsequent
+    # getter calls below run with view=NULL/space=NULL on the
+    # already-narrowed gobject — no per-getter resolver work.
+    if (!is.null(view) || !is.null(space)) {
+        need_slots <- character(0L)
+        if (isTRUE(include_spat_locs)) {
+            need_slots <- c(need_slots, "spatial_locs")
+        }
+        if (isTRUE(include_poly_info)) {
+            need_slots <- c(need_slots, "spatial_info")
+        }
+        if (isTRUE(include_spat_enr)) {
+            need_slots <- c(need_slots, "spatial_enrichment")
+        }
+        need_slots <- c(need_slots, "cell_metadata")
+        gobject <- materialize(gobject, view, space = space,
+            slots = need_slots)
+        view <- NULL
+        space <- NULL
+    }
+
     ## spatial locations ##
     if (isTRUE(include_spat_locs)) {
         spat_locs_dt <- getSpatialLocations(
@@ -256,9 +286,7 @@ combineCellData <- function(gobject,
             spat_unit = poly_info,
             name = spat_loc_name,
             output = "data.table",
-            copy_obj = TRUE,
-            view = view,
-            space = space
+            copy_obj = TRUE
         )
     } else {
         spat_locs_dt <- NULL
@@ -267,15 +295,12 @@ combineCellData <- function(gobject,
 
     ## spatial poly ##
     if (isTRUE(include_poly_info)) {
-        # get spatial poly information. view/space resolution happens
-        # inside `getPolygonInfo` before SpatVector coercion (see
-        # `slot_accessors.R::getPolygonInfo` line ~2569).
+        # get spatial poly information. View/space already applied via
+        # the pre-narrowing materialize() pass above (when supplied).
         sv <- getPolygonInfo(
             gobject = gobject,
             polygon_name = poly_info,
-            return_giottoPolygon = FALSE,
-            view = view,
-            space = space
+            return_giottoPolygon = FALSE
         )
 
         e <- ext(sv)
@@ -339,9 +364,7 @@ combineCellData <- function(gobject,
             comb_dt = comb_dt,
             spat_unit = poly_info,
             feat_type = feat_type,
-            spat_enr_names = spat_enr_names,
-            view = view,
-            space = space
+            spat_enr_names = spat_enr_names
         )
     }
 
@@ -354,9 +377,7 @@ combineCellData <- function(gobject,
             gobject = gobject,
             spat_unit = poly_info,
             feat_type = feat,
-            output = "data.table",
-            view = view,
-            space = space
+            output = "data.table"
         )
 
         # merge
@@ -416,6 +437,15 @@ combineFeatureData <- function(gobject,
         feat_type = feat_type
     )
 
+    # Pre-narrow the gobject for the slots we touch — see
+    # `combineCellData` notes.
+    if (!is.null(view) || !is.null(space)) {
+        gobject <- materialize(gobject, view, space = space,
+            slots = c("feat_info", "feat_metadata"))
+        view <- NULL
+        space <- NULL
+    }
+
     res_list <- list()
     for (feat in unique(feat_type)) {
 
@@ -428,9 +458,7 @@ combineFeatureData <- function(gobject,
         feat_info_spatvec <- getFeatureInfo(
             gobject = gobject,
             feat_type = feat,
-            return_giottoPoints = TRUE,
-            view = view,
-            space = space
+            return_giottoPoints = TRUE
         )
         if (!is.null(selected_features)) {
             feat_info_spatvec <- feat_info_spatvec[selected_features]
@@ -452,9 +480,7 @@ combineFeatureData <- function(gobject,
                 gobject = gobject,
                 spat_unit = spat,
                 feat_type = feat,
-                output = "data.table",
-                view = view,
-                space = space
+                output = "data.table"
             )
 
             if (!is.null(selected_features)) {
@@ -1212,9 +1238,7 @@ calculateSpatCellMetadataProportions <- function(gobject,
     comb_dt,
     spat_unit,
     feat_type,
-    spat_enr_names = NULL,
-    view = NULL,
-    space = NULL) {
+    spat_enr_names = NULL) {
     if (is.null(spat_enr_names)) {
         return(comb_dt)
     } # skip if not requested
@@ -1253,9 +1277,7 @@ calculateSpatCellMetadataProportions <- function(gobject,
             name = enr_name,
             output = "data.table",
             copy_obj = TRUE,
-            set_defaults = FALSE,
-            view = view,
-            space = space
+            set_defaults = FALSE
         )
     })
 

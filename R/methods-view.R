@@ -315,17 +315,55 @@ setMethod("giottoViews", signature(gobject = "gAny"),
 #' @param coordinator a [viewCoordinator-class]-inheriting object brokering
 #'   IDs and joins between storage backings. Defaults to the coordinator
 #'   selected from `gobject@source` (in-memory for non-disk gobjects).
+#' @param slots optional `character` vector of slot names to narrow.
+#'   When `NULL` (default), all slot lists are walked (`cell_metadata`,
+#'   `expression`, `dimension_reduction`, `spatial_enrichment`,
+#'   `feat_metadata`, `spatial_locs`, `spatial_info`, `feat_info`,
+#'   `images`). When supplied, only the listed slots are walked — the
+#'   rest are left untouched on the returned object. Useful for
+#'   internal helpers that only consume a subset of slots and want to
+#'   share one resolver pass without paying for irrelevant slots.
 #' @param ... reserved
 #' @returns a new `giotto` object reflecting the resolved view
 #' @export
 setGeneric("materialize",
     function(gobject, view, ...) standardGeneric("materialize"))
 
+
+# All slots `materialize()` knows how to walk, in the canonical order
+# (tabular → spatial → images). Used as the default slot set when
+# `slots = NULL` and to validate caller-supplied slot names.
+.materialize_default_slots <- c(
+    "cell_metadata", "expression", "dimension_reduction",
+    "spatial_enrichment", "feat_metadata",
+    "spatial_locs", "spatial_info", "feat_info", "images"
+)
+
+
+# Validate and order a caller-supplied slot vector against the
+# canonical walk order. NULL → all default slots. Unknown slot names
+# error.
+#' @keywords internal
+#' @noRd
+.materialize_slot_filter <- function(slots) {
+    if (is.null(slots)) return(.materialize_default_slots)
+    bad <- setdiff(slots, .materialize_default_slots)
+    if (length(bad) > 0L) {
+        stop(sprintf(
+            "[materialize] unknown slot(s): %s. Available: %s",
+            paste(bad, collapse = ", "),
+            paste(.materialize_default_slots, collapse = ", ")
+        ), call. = FALSE)
+    }
+    intersect(.materialize_default_slots, slots)  # canonical order
+}
+
 #' @rdname materialize
 #' @export
 setMethod("materialize",
     signature(gobject = "giotto", view = "giottoView"),
-    function(gobject, view, space = NULL, coordinator = NULL, ...) {
+    function(gobject, view, space = NULL, coordinator = NULL,
+             slots = NULL, ...) {
         if (is.null(coordinator)) {
             coordinator <- .default_view_coordinator(gobject)
         }
@@ -338,27 +376,13 @@ setMethod("materialize",
 
         out <- gobject
 
-        # Tabular slots — narrow by surviving cell_IDs only
-        out <- .materialize_walk(out, "cell_metadata",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "expression",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "dimension_reduction",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "spatial_enrichment",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "feat_metadata",
-            view, space_obj, coordinator, cache)
-
-        # Spatial slots — narrow + transform + crop
-        out <- .materialize_walk(out, "spatial_locs",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "spatial_info",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "feat_info",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "images",
-            view, space_obj, coordinator, cache)
+        # Walk the (possibly filtered) slot list in canonical order:
+        # tabular → spatial → images. Slot names not in `slots` are
+        # left untouched on the returned gobject.
+        for (slot_name in .materialize_slot_filter(slots)) {
+            out <- .materialize_walk(out, slot_name,
+                view, space_obj, coordinator, cache)
+        }
 
         # Networks (spatial_network, nn_network) intentionally not walked:
         # they're built from a particular cell state and don't carry
@@ -372,9 +396,11 @@ setMethod("materialize",
 #' @export
 setMethod("materialize",
     signature(gobject = "giotto", view = "character"),
-    function(gobject, view, space = NULL, coordinator = NULL, ...) {
+    function(gobject, view, space = NULL, coordinator = NULL,
+             slots = NULL, ...) {
         v <- giottoView(gobject, view)
-        materialize(gobject, v, space = space, coordinator = coordinator, ...)
+        materialize(gobject, v, space = space, coordinator = coordinator,
+            slots = slots, ...)
     }
 )
 
@@ -393,7 +419,8 @@ setMethod("materialize",
 #' @export
 setMethod("materialize",
     signature(gobject = "giottoMulti", view = "giottoView"),
-    function(gobject, view, space = NULL, coordinator = NULL, ...) {
+    function(gobject, view, space = NULL, coordinator = NULL,
+             slots = NULL, ...) {
         if (is.null(coordinator)) {
             coordinator <- .default_view_coordinator(gobject)
         }
@@ -413,27 +440,27 @@ setMethod("materialize",
         out@objects <- gobject@objects[selected]
 
         # Per-surviving-child materialize with the child-scoped space.
+        # `slots` filter is forwarded so per-child narrowing matches the
+        # joint-level scope.
         out@objects <- setNames(lapply(selected, function(samp) {
             child <- out@objects[[samp]]
             child_space <- .scope_space_to_sample(space_obj, samp)
             materialize(child, view, space = child_space,
-                coordinator = coordinator, ...)
+                coordinator = coordinator, slots = slots, ...)
         }), selected)
 
-        # Narrow joint shared slots — uses the same resolveSubobject
-        # dispatch as the giotto path; spatValues-on-multi resolves
-        # predicates against joint slots and returns global cell_IDs
-        # which then filter each joint subobject's metaDT / matrix.
-        out <- .materialize_walk(out, "cell_metadata",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "expression",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "dimension_reduction",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "spatial_enrichment",
-            view, space_obj, coordinator, cache)
-        out <- .materialize_walk(out, "feat_metadata",
-            view, space_obj, coordinator, cache)
+        # Narrow joint shared slots. Joint-level walk respects the
+        # `slots` filter: only multi-level cell_metadata / expression /
+        # dim_reduction / spatial_enrichment / feat_metadata are
+        # legitimately joint, so we intersect with that subset.
+        joint_candidates <- c("cell_metadata", "expression",
+            "dimension_reduction", "spatial_enrichment", "feat_metadata")
+        joint_slots <- intersect(.materialize_slot_filter(slots),
+            joint_candidates)
+        for (slot_name in joint_slots) {
+            out <- .materialize_walk(out, slot_name,
+                view, space_obj, coordinator, cache)
+        }
 
         out
     }
@@ -443,9 +470,11 @@ setMethod("materialize",
 #' @export
 setMethod("materialize",
     signature(gobject = "giottoMulti", view = "character"),
-    function(gobject, view, space = NULL, coordinator = NULL, ...) {
+    function(gobject, view, space = NULL, coordinator = NULL,
+             slots = NULL, ...) {
         v <- giottoView(gobject, view)
-        materialize(gobject, v, space = space, coordinator = coordinator, ...)
+        materialize(gobject, v, space = space, coordinator = coordinator,
+            slots = slots, ...)
     }
 )
 
