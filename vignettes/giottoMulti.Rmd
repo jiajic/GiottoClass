@@ -71,6 +71,26 @@ spatIDs(mg, object = "visium")
 
 Feature IDs are passthrough by default — the feature panel is shared vocabulary across children.
 
+### Sample identity as a column
+
+When pulling values from the multi via `spatValues()`, sample identity is
+surfaced as a `list_ID` column alongside `cell_ID` — handy for downstream
+grouping / faceting without re-parsing the namespaced ID:
+
+```{r}
+# Pull a feature across all samples
+sv <- spatValues(mg, feats = "f1")
+sv
+
+# list_ID lets you group / split / color by sample
+table(sv$list_ID)
+```
+
+This column is added only when `gobject` is a `giottoMulti`; on a plain
+`giotto`, `spatValues()` returns just `cell_ID + feats`. The same applies
+to multi-feat fetches and metadata-column fetches: any `spatValues()` call
+on a gmulti carries `list_ID`.
+
 ## Joint expression: assembly then override
 
 `getExpression(mg)` has two modes depending on whether `mg@expression` has been written to:
@@ -152,6 +172,46 @@ There is no stateful "active" pointer to flip — every per-child operation take
 If you edit a child directly (e.g. by replacing it with `mg[["a"]] <- new_g` or by mutating a slot outside the approved op surface), the cached `@id_map` may be out of sync. `initialize(mg)` re-detects via the cached length signature and rebuilds when needed — cheap on every call, no-op when nothing changed.
 
 For an exotic same-length-different-content child edit, just reconstruct: `createGiottoMulti(mg@objects, source = mg@source)` starts fresh, no cached signature.
+
+## Filtering and reframing without mutation
+
+To narrow which cells / features a downstream analysis sees, or to apply
+coordinate-frame transforms across children, use `giottoView` and
+`giottoSpace` recipes. Both compose naturally with `giottoMulti`:
+
+* A view's `selectSamples()` step picks which children participate.
+* A space binds transforms to named samples for cross-sample layouts
+  (e.g. positioning visium_a and visium_b side-by-side).
+* `materialize(mg, view, space)` runs the recipe once across the multi
+  and reuses the survivor-cache across downstream getter calls.
+
+See `vignette("view_and_space", package = "GiottoClass")` for the full
+walkthrough.
+
+## Analysis and plotting
+
+The joint analysis layer (normalize / runPCA / runUMAP / clustering /
+integration) lives in the `Giotto` analysis package, not here. Those
+generics operate on the assembled expression matrix and write the
+corrected / reduced result back to the multi's joint slots
+(`@expression`, `@dimension_reduction`), at which point downstream reads
+flip from "assembled live" to "joint slot is authoritative" (see "Joint
+expression" above).
+
+Plotting lives in `GiottoVisuals` and falls into two patterns when handed
+a `giottoMulti`:
+
+* **Spatial plots** (`spatPlot2D`, `spatInSituPlotPoints`, ...) dispatch
+  per-child via cowplot panels. Pass `space = ":all:"` (the default) for
+  one panel per sample, or `space = c("visium_a", ...)` for a subset.
+  Cross-sample defined-space panels (multiple children in one panel under
+  a shared coord frame) require a `giottoSpace`-based flatten layer that
+  is still under development.
+* **Non-spatial plots** (`dotPlot`, `violinPlot`, `dimPlot2D`, `plotUMAP`,
+  heatmap family) pull data via gmulti-aware getters (`spatValues`,
+  `getCellMetadata`, `getDimReduction`) and render one unified plot
+  across all samples. Use `cell_color = "list_ID"` to color points by
+  sample of origin.
 
 ## Relationship to other containers
 
