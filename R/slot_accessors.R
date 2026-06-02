@@ -3337,7 +3337,12 @@ spatValues <- function(gobject,
     svkey = NULL,
     verbose = NULL,
     debug = FALSE) {
-    checkmate::assert_class(gobject, "giotto")
+    # Accepts giotto or giottoMulti. On gmulti, expression / cell_metadata
+    # getters return joint / assembled subobjects; per-child-only getters
+    # (e.g. getSpatialLocations) are tryCatch-wrapped inside the
+    # individual check_* closures so the slot loop falls through cleanly.
+    # Sample identity is surfaced as a `list_ID` column at the bottom.
+    checkmate::assert_class(gobject, "gAny")
     if (!is.null(svkey)) {
         checkmate::assert_class(svkey, "svkey")
         return(svkey@get(gobject))
@@ -3428,14 +3433,19 @@ spatValues <- function(gobject,
         if (!is.null(vals)) {
             return(vals)
         }
-        sl <- getSpatialLocations(
+        # spatial_locs is a per-child slot on giottoMulti; the getter is
+        # signature("giotto") only and would throw a class-assertion
+        # error. Gracefully no-op on multi via tryCatch so spatValues
+        # falls through to whatever joint-level slot has the requested
+        # features.
+        sl <- tryCatch(getSpatialLocations(
             gobject = gobject,
             spat_unit = spat_unit,
             name = spat_loc_name,
             output = "spatLocsObj",
             copy_obj = FALSE,
             set_defaults = TRUE # try to guess name
-        )
+        ), error = function(e) NULL)
         if (is.null(sl)) {
             return(NULL)
         }
@@ -3625,6 +3635,18 @@ spatValues <- function(gobject,
             paste(nextcheck, collapse = ", "),
             "for spat_unit", spat_unit, "and feat_type", feat_type
         ))
+    }
+
+    # giottoMulti annotation: cell_IDs in the assembled / joint slots
+    # are namespaced as `<sample>::<original_id>`. Surface the sample
+    # tag as a `list_ID` column so downstream plot / analysis consumers
+    # can group / facet / color by sample without re-parsing the ID.
+    if (inherits(gobject, "giottoMulti") && !is.null(vals) &&
+        "cell_ID" %in% names(vals) && !"list_ID" %in% names(vals)) {
+        list_ID <- NULL  # NSE
+        vals[, list_ID := data.table::tstrsplit(
+            cell_ID, "::", fixed = TRUE)[[1L]]]
+        data.table::setcolorder(vals, c("cell_ID", "list_ID"))
     }
 
     return(vals)
