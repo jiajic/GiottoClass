@@ -159,6 +159,78 @@ s_layout <- s_a + s_b
 s_layout
 ```
 
+## Indirect usage: `view = ` / `space = ` on existing generics
+
+The recipe constructors above are explicit and composable, but for the
+interactive workflow of "try a filter or transform and save it for
+later," the existing eager generics (`subset()`, `spin()`, `spatShift()`,
+`flip()`, `rescale()`, `affine()`) accept an optional `view = ` or
+`space = ` argument. When supplied, the call records the step onto the
+named recipe (creating the slotted view/space if missing) and returns
+the modified gobject. When omitted, the call behaves eagerly as before
+— no behavior change.
+
+### Recording a view from `subset()`
+
+```{r}
+g <- GiottoData::loadGiottoMini("visium", verbose = FALSE)
+
+# Indirect: record the filter under the slot name "cluster1_only"
+g <- subset(g, leiden_clus == 1, view = "cluster1_only")
+
+# A second subset() call with the same name appends to that view
+g <- subset(g, total_expr > 500, view = "cluster1_only")
+
+# Inspect what was recorded
+giottoView(g, "cluster1_only")
+```
+
+The eager path is unchanged when `view` is not supplied:
+
+```{r, eval=FALSE}
+g_sub <- subset(g, leiden_clus == 1)   # returns a narrowed giotto
+```
+
+### Recording a space from a transform
+
+```{r}
+# Indirect: record a rotation under the slot name "rotated"
+g <- spin(g, angle = 45, space = "rotated")
+
+# Chain another transform onto the same space
+g <- spatShift(g, dx = 100, dy = 0, space = "rotated")
+
+giottoSpace(g, "rotated")
+```
+
+The eager paths still apply when `space` is not supplied. Eagerly applied
+transforms walk subobjects and mutate coordinates in place; recipe-mode
+just queues the step.
+
+### Passing a recipe object instead of a name
+
+If you want to build a free-standing recipe (no slotting yet), pass a
+`giottoView` / `giottoSpace` object as the `view = ` / `space = ` arg.
+The generic appends the step and returns the **recipe** (not the
+gobject), so you can keep piping:
+
+```{r}
+v0 <- giottoView()
+v1 <- subset(g, leiden_clus == 2, view = v0)
+v1
+
+# Slot it later when ready
+giottoView(g, "cluster2") <- v1
+```
+
+### Why the same verbs
+
+The intent is that users keep the verbs they already know. The optional
+`view = ` / `space = ` arg lets the same call site choose between "do
+it now" (default) and "save the recipe for later." No new
+`subsetAsView()` / `recordSpace()` functions to learn.
+
+
 ## Slotting onto a gobject
 
 Views and spaces can live as standalone recipes or be attached to a gobject

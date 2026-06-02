@@ -32,6 +32,33 @@ NULL
     view
 }
 
+
+# Indirect-usage routing: lets generics like subset() / crop() on a
+# `giotto` accept `view = <name|giottoView>` and record the step rather
+# than executing eagerly. Returns:
+#   - the gobject (with the named view slotted / appended) when `view`
+#     is a character name
+#   - the modified giottoView object when `view` is a recipe (caller
+#     continues building before slotting later)
+.record_view_on_gobject <- function(gobject, view, step) {
+    if (is.character(view)) {
+        checkmate::assert_character(view, len = 1L, any.missing = FALSE)
+        existing <- if (view %in% giottoViews(gobject)) {
+            giottoView(gobject, view)
+        } else {
+            giottoView()
+        }
+        new_view <- .view_record_step(existing, step)
+        giottoView(gobject, view) <- new_view
+        return(gobject)
+    }
+    if (inherits(view, "giottoView")) {
+        return(.view_record_step(view, step))
+    }
+    stop("`view` must be NULL (eager), a character name, ",
+        "or a giottoView object", call. = FALSE)
+}
+
 # Substitute env-resident scalar / vector values into `pred` so the
 # predicate becomes self-contained. Functions and missing names are left
 # alone — they're resolved at eval time via the standard scope chain.

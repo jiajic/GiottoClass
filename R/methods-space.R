@@ -101,6 +101,34 @@ setMethod("giottoSpace", signature(gobject = "missing", name = "character"),
 }
 
 
+# Indirect-usage routing: lets transform generics (spin / spatShift /
+# affine / flip / rescale / shear / zoom) on a `giotto` accept
+# `space = <name|giottoSpace>` and record the transform as a step.
+# Returns:
+#   - the gobject (with the named space slotted / appended) when `space`
+#     is a character name
+#   - the modified giottoSpace object when `space` is a recipe (caller
+#     continues building before slotting later)
+.record_space_on_gobject <- function(gobject, space, op, args) {
+    if (is.character(space)) {
+        checkmate::assert_character(space, len = 1L, any.missing = FALSE)
+        existing <- if (space %in% giottoSpaces(gobject)) {
+            giottoSpace(gobject, space)
+        } else {
+            giottoSpace()
+        }
+        new_space <- .space_record(existing, op, args)
+        giottoSpace(gobject, space) <- new_space
+        return(gobject)
+    }
+    if (inherits(space, "giottoSpace")) {
+        return(.space_record(space, op, args))
+    }
+    stop("`space` must be NULL (eager), a character name, ",
+        "or a giottoSpace object", call. = FALSE)
+}
+
+
 # Record methods on spatial transform generics ####
 
 #' @rdname spin
