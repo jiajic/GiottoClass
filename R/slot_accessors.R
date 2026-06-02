@@ -3422,6 +3422,11 @@ spatValues <- function(gobject,
     space = NULL,
     verbose = NULL,
     debug = FALSE) {
+    # Accepts giotto or giottoMulti. On gmulti, expression / cell_metadata
+    # getters return joint / assembled subobjects; per-child-only getters
+    # (e.g. getSpatialLocations) are tryCatch-wrapped inside the
+    # individual check_* closures so the slot loop falls through cleanly.
+    # Sample identity is surfaced as a `list_ID` column at the bottom.
     checkmate::assert_class(gobject, "gAny")
     if (!is.null(svkey)) {
         checkmate::assert_class(svkey, "svkey")
@@ -3527,9 +3532,10 @@ spatValues <- function(gobject,
             return(vals)
         }
         # spatial_locs is a per-child slot on giottoMulti; the getter is
-        # signature("giotto") only. Gracefully no-op on multi via tryCatch
-        # so spatValues falls through to whatever joint-level slot has the
-        # requested features.
+        # signature("giotto") only and would throw a class-assertion
+        # error. Gracefully no-op on multi via tryCatch so spatValues
+        # falls through to whatever joint-level slot has the requested
+        # features.
         sl <- tryCatch(getSpatialLocations(
             gobject = gobject,
             spat_unit = spat_unit,
@@ -3751,6 +3757,20 @@ spatValues <- function(gobject,
         if (!is.null(keep)) {
             vals <- vals[cell_ID %in% keep]
         }
+    }
+
+    # giottoMulti annotation: cell_IDs in the assembled / joint slots
+    # are namespaced as `<sample>::<original_id>`. Surface the sample
+    # tag as a `list_ID` column so downstream plot / analysis consumers
+    # can group / facet / color by sample without re-parsing the ID.
+    # Runs after view/space narrowing so list_ID only reflects surviving
+    # cells.
+    if (inherits(gobject, "giottoMulti") && !is.null(vals) &&
+        "cell_ID" %in% names(vals) && !"list_ID" %in% names(vals)) {
+        list_ID <- NULL  # NSE
+        vals[, list_ID := data.table::tstrsplit(
+            cell_ID, "::", fixed = TRUE)[[1L]]]
+        data.table::setcolorder(vals, c("cell_ID", "list_ID"))
     }
 
     return(vals)
