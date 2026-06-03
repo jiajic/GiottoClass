@@ -213,11 +213,23 @@ setMethod("initialize", signature("giottoMulti"), function(.Object, objects = NU
     # id_map: cache rebuilt only when child length-signatures differ from the
     # cached signature. Bare re-init when nothing changed is a no-op modulo a
     # signature comparison over N children — microseconds even at atlas scale.
+    #
+    # When the population changes (child added / removed / replaced),
+    # @cell_ID / @feat_ID narrowing is reset to NULL: those slots record
+    # the *surviving set from a prior filter on a specific population*,
+    # which is no longer well-defined after a structural change.
+    # User-facing contract: re-run filterGiotto / subsetGiotto on the
+    # expanded multi to recompute. Diverges deliberately from sdata's
+    # implicit-inclusion pattern where new elements silently participate
+    # in any state carried on the parent; gmulti treats narrowing as
+    # eager state tied to a specific population.
     cur_sig <- .gm_compute_sig(.Object@objects)
     if (!identical(cur_sig, .Object@id_sig)) {
         .Object@id_map$cells <- .gm_build_cell_idmap(.Object@objects)
         .Object@id_map$feats <- .gm_build_feat_idmap(.Object@objects)
         .Object@id_sig <- cur_sig
+        .Object@cell_ID <- NULL
+        .Object@feat_ID <- NULL
     }
 
     .Object
@@ -322,11 +334,15 @@ setMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing"),
 
 #' @noRd
 setReplaceMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing", value = "giotto"),
-    function(x, i, j, ..., value) {
+    function(x, i, j, ..., initialize = TRUE, value) {
         x@objects[[i]] <- value
-        # id_map is not eagerly refreshed; the user (or the next initialize()
-        # call) is responsible. initialize() detects the change via the
-        # length-signature fast-path.
+        # Default: re-initialize so id_map rebuilds and any prior
+        # narrowing (@cell_ID / @feat_ID) clears -- structural change
+        # invalidates the surviving-set record. Cost is a length-vector
+        # signature check on N children (microseconds). Bulk-add callers
+        # can pass `initialize = FALSE` and run `initialize(mg)` once at
+        # the end to amortize.
+        if (isTRUE(initialize)) x <- initialize(x)
         x
     }
 )
@@ -508,12 +524,13 @@ setMethod("show", "giottoMulti", function(object) {
     }
 
     # view: subset filter state — visible / total reflects whether the user
-    # has narrowed the view. Totals match the union of children's spatIDs /
-    # featIDs (i.e. the unfiltered baseline).
+    # has narrowed the view. `n_c_vis` / `n_f_vis` go through the gmulti's
+    # spatIDs / featIDs methods, which intersect @id_map with the active
+    # @cell_ID / @feat_ID narrowing. Totals come straight from children
+    # (the unfiltered baseline) and are independent of any narrowing.
     if (!is.null(object@id_map$cells) || !is.null(object@id_map$feats)) {
-        n_c_vis <- if (!is.null(object@id_map$cells)) {
-            nrow(object@id_map$cells)
-        } else 0L
+        n_c_vis <- length(tryCatch(spatIDs(object),
+            error = function(e) character()))
         n_c_total <- sum(vapply(object@objects, function(g) {
             length(tryCatch(spatIDs(g),
                 error = function(e) character()))
@@ -522,9 +539,8 @@ setMethod("show", "giottoMulti", function(object) {
         per_child_feats <- lapply(object@objects, function(g) {
             tryCatch(featIDs(g), error = function(e) character())
         })
-        n_f_vis <- if (!is.null(object@id_map$feats)) {
-            length(unique(object@id_map$feats$global_id))
-        } else 0L
+        n_f_vis <- length(tryCatch(featIDs(object),
+            error = function(e) character()))
         n_f_total <- length(unique(unlist(per_child_feats, use.names = FALSE)))
 
         c_flag <- if (n_c_vis < n_c_total) " (filtered)" else ""
@@ -929,7 +945,7 @@ setMethod("idMap", "giottoMulti", function(x, which = c("cells", "feats"), ...) 
 #' @export
 setMethod(
     "spatIDs", signature(x = "giottoMulti"),
-    function(x, object = NULL, local = FALSE, ...) {
+    function(x, object = NULL, local = FALSE, spat_unit = NULL, ...) {
         m <- x@id_map$cells
         if (is.null(m) || nrow(m) == 0L) return(character())
         if (!is.null(object)) {
@@ -937,6 +953,19 @@ setMethod(
             # pre-compute keep to avoid data.table column-name shadowing
             keep <- m$object %in% target
             m <- m[keep, ]
+        }
+        # @cell_ID narrowing: when set, intersect with global ids. The slot
+        # is nested by spat_unit; restrict to one spat_unit if requested,
+        # else union across spat_units. Empty @cell_ID is "no narrowing".
+        if (length(x@cell_ID) > 0L) {
+            surv <- if (is.null(spat_unit)) {
+                unique(unlist(x@cell_ID, use.names = FALSE))
+            } else {
+                x@cell_ID[[spat_unit]]
+            }
+            if (!is.null(surv)) {
+                m <- m[m$global_id %in% surv, ]
+            }
         }
         if (isTRUE(local)) return(m$local_id)
         m$global_id
@@ -947,13 +976,26 @@ setMethod(
 #' @export
 setMethod(
     "featIDs", signature(x = "giottoMulti"),
-    function(x, object = NULL, local = FALSE, uniques = TRUE, ...) {
+    function(x, object = NULL, local = FALSE, uniques = TRUE,
+             feat_type = NULL, ...) {
         m <- x@id_map$feats
         if (is.null(m) || nrow(m) == 0L) return(character())
         if (!is.null(object)) {
             target <- .gm_resolve_objects(x, object)
             keep <- m$object %in% target
             m <- m[keep, ]
+        }
+        # @feat_ID narrowing: same pattern as @cell_ID above, nested by
+        # feat_type instead of spat_unit.
+        if (length(x@feat_ID) > 0L) {
+            surv <- if (is.null(feat_type)) {
+                unique(unlist(x@feat_ID, use.names = FALSE))
+            } else {
+                x@feat_ID[[feat_type]]
+            }
+            if (!is.null(surv)) {
+                m <- m[m$global_id %in% surv, ]
+            }
         }
         ids <- if (isTRUE(local)) m$local_id else m$global_id
         if (isTRUE(uniques)) unique(ids) else ids
