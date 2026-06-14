@@ -18,11 +18,15 @@ gmultiMapping(x, ...) <- value
 \arguments{
 \item{x}{a \code{giottoMulti}}
 
-\item{which}{one of \code{"spat_unit"} or \code{"feat_type"} to narrow the return;
-default returns the full mapping list}
+\item{which}{one of \code{"spat_unit"} or \code{"feat_type"} to narrow the
+return / target axis; default \code{NULL} returns or replaces the full
+mapping list}
 
-\item{value}{a \code{list} with \code{spat_unit} / \code{feat_type} entries, or \code{NULL}
-to trigger fresh auto-discovery}
+\item{value}{depends on the setter form: full mapping list,
+axis-shaped list, single per-sample-named char vector, or \code{NULL}}
+
+\item{handle}{a single gmulti-level handle name (e.g. \code{"cell"}) under
+the chosen axis; used only by the single-entry setter}
 }
 \value{
 the requested mapping (full list or one axis)
@@ -34,12 +38,18 @@ reconciliation.
 
 Auto-discovered at construction via the symmetric trivial mapping
 (gmulti-level handle == child-level name across all participating
-samples). The setter accepts an edited mapping (e.g. to declare that
-B191's \code{"transcripts"} and B215's \code{"rna"} are the same modality) and
-invalidates joint slot state per affected (spat_unit, feat_type)
-universe.
+samples). The setter has three forms:
+\itemize{
+\item Full replacement: \code{gmultiMapping(mg) <- list(spat_unit = ..., feat_type = ...)}
+\item Whole-axis replacement: \code{gmultiMapping(mg, "spat_unit") <- list(cell = ..., nucleus = ...)}
+\item Single-entry replacement: \code{gmultiMapping(mg, "spat_unit", "cell") <- c(B191 = "cell", B215 = "poly")}
+}
 
-Assignment of \code{NULL} triggers fresh auto-discovery from the current
-child population — useful after adding children with new
-spat_units / feat_types not present in the previous mapping.
+Setting a single-entry vector to \code{NULL} removes that entry. Assigning
+the top-level mapping to \code{NULL} triggers fresh auto-discovery from the
+current child population.
+
+All setter forms validate the resulting mapping and invalidate joint
+slot state per affected (spat_unit, feat_type) universe — joint state
+for unrelated universes survives untouched.
 }

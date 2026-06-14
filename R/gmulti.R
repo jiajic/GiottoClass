@@ -1043,20 +1043,28 @@ setMethod("idMap", "giottoMulti", function(x, which = c("cells", "feats"), ...) 
 #'
 #' Auto-discovered at construction via the symmetric trivial mapping
 #' (gmulti-level handle == child-level name across all participating
-#' samples). The setter accepts an edited mapping (e.g. to declare that
-#' B191's `"transcripts"` and B215's `"rna"` are the same modality) and
-#' invalidates joint slot state per affected (spat_unit, feat_type)
-#' universe.
+#' samples). The setter has three forms:
 #'
-#' Assignment of `NULL` triggers fresh auto-discovery from the current
-#' child population — useful after adding children with new
-#' spat_units / feat_types not present in the previous mapping.
+#' * Full replacement: `gmultiMapping(mg) <- list(spat_unit = ..., feat_type = ...)`
+#' * Whole-axis replacement: `gmultiMapping(mg, "spat_unit") <- list(cell = ..., nucleus = ...)`
+#' * Single-entry replacement: `gmultiMapping(mg, "spat_unit", "cell") <- c(B191 = "cell", B215 = "poly")`
+#'
+#' Setting a single-entry vector to `NULL` removes that entry. Assigning
+#' the top-level mapping to `NULL` triggers fresh auto-discovery from the
+#' current child population.
+#'
+#' All setter forms validate the resulting mapping and invalidate joint
+#' slot state per affected (spat_unit, feat_type) universe — joint state
+#' for unrelated universes survives untouched.
 #'
 #' @param x a `giottoMulti`
-#' @param which one of `"spat_unit"` or `"feat_type"` to narrow the return;
-#'   default returns the full mapping list
-#' @param value a `list` with `spat_unit` / `feat_type` entries, or `NULL`
-#'   to trigger fresh auto-discovery
+#' @param which one of `"spat_unit"` or `"feat_type"` to narrow the
+#'   return / target axis; default `NULL` returns or replaces the full
+#'   mapping list
+#' @param handle a single gmulti-level handle name (e.g. `"cell"`) under
+#'   the chosen axis; used only by the single-entry setter
+#' @param value depends on the setter form: full mapping list,
+#'   axis-shaped list, single per-sample-named char vector, or `NULL`
 #' @returns the requested mapping (full list or one axis)
 #' @export
 setGeneric("gmultiMapping",
@@ -1081,12 +1089,54 @@ setGeneric("gmultiMapping<-",
 #' @export
 setMethod("gmultiMapping<-", "giottoMulti",
     function(x, ..., value) {
-        if (is.null(value)) {
-            x@mapping <- .gm_discover_mapping(x@objects)
-            return(.gm_invalidate_joint_for_mapping_change(x, old = NULL))
-        }
-        new_mapping <- .gm_validate_mapping(value, x@objects)
+        dots <- list(...)
+        # Accept positional or named (which, handle). Drop NULLs from dots
+        # because R's setter dispatch reserves the trailing position for
+        # `value` — extra positional args bind in order.
+        which <- dots[["which"]] %||% (if (length(dots) >= 1L) dots[[1L]] else NULL)
+        handle <- dots[["handle"]] %||% (if (length(dots) >= 2L) dots[[2L]] else NULL)
+
         old_mapping <- x@mapping
+
+        if (is.null(which) && is.null(handle)) {
+            # Full replacement (existing path).
+            if (is.null(value)) {
+                x@mapping <- .gm_discover_mapping(x@objects)
+                return(.gm_invalidate_joint_for_mapping_change(x, old = NULL))
+            }
+            new_mapping <- .gm_validate_mapping(value, x@objects)
+            x@mapping <- new_mapping
+            return(.gm_invalidate_joint_for_mapping_change(x, old = old_mapping))
+        }
+
+        # Axis-scoped or entry-scoped replacement: build the candidate
+        # full mapping then route through the same validate + invalidate
+        # path so the universe-scoped invalidation logic is identical.
+        which <- match.arg(which, c("spat_unit", "feat_type"))
+        candidate <- old_mapping
+
+        if (is.null(handle)) {
+            # Whole-axis replacement. NULL drops the axis entirely.
+            if (is.null(value)) {
+                candidate[[which]] <- list()
+            } else {
+                checkmate::assert_list(value,
+                    .var.name = sprintf("mapping$%s", which))
+                candidate[[which]] <- value
+            }
+        } else {
+            # Single-entry replacement. NULL drops that entry.
+            checkmate::assert_string(handle)
+            if (is.null(value)) {
+                candidate[[which]][[handle]] <- NULL
+            } else {
+                checkmate::assert_character(value, names = "unique",
+                    .var.name = sprintf("mapping$%s$%s", which, handle))
+                candidate[[which]][[handle]] <- value
+            }
+        }
+
+        new_mapping <- .gm_validate_mapping(candidate, x@objects)
         x@mapping <- new_mapping
         .gm_invalidate_joint_for_mapping_change(x, old = old_mapping)
     }

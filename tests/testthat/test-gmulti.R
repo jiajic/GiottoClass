@@ -1057,3 +1057,117 @@ test_that("show method displays @mapping summary", {
     expect_true(any(grepl("spat_unit: cell \\(2\\)", out)))
     expect_true(any(grepl("feat_type: rna \\(2\\)", out)))
 })
+
+
+# @mapping setter — axis-scoped and entry-scoped forms ####
+
+test_that("axis-scoped setter replaces just one axis", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    feat_before <- gmultiMapping(mg, "feat_type")
+    gmultiMapping(mg, "spat_unit") <- list(
+        cell = c(a = "cell", b = "cell")
+    )
+
+    # feat_type axis untouched
+    expect_identical(gmultiMapping(mg, "feat_type"), feat_before)
+    # spat_unit axis replaced
+    expect_identical(gmultiMapping(mg, "spat_unit"),
+        list(cell = c(a = "cell", b = "cell")))
+})
+
+test_that("entry-scoped setter replaces one handle's per-sample vector", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    gmultiMapping(mg, "feat_type", "rna") <- c(a = "rna")  # drop b
+    expect_identical(gmultiMapping(mg, "feat_type")$rna, c(a = "rna"))
+    # spat_unit unchanged
+    expect_identical(gmultiMapping(mg, "spat_unit")$cell,
+        c(a = "cell", b = "cell"))
+})
+
+test_that("entry-scoped setter with NULL drops that entry", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    gmultiMapping(mg, "feat_type", "rna") <- NULL
+    expect_null(gmultiMapping(mg, "feat_type")$rna)
+    expect_length(gmultiMapping(mg, "feat_type"), 0L)
+})
+
+test_that("entry-scoped setter validates per-sample names", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    expect_error(
+        gmultiMapping(mg, "spat_unit", "cell") <- c(a = "cell", NOPE = "cell"),
+        "unknown sample"
+    )
+})
+
+test_that("entry-scoped setter validates child slot existence", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    expect_error(
+        gmultiMapping(mg, "spat_unit", "cell") <- c(a = "not_a_real_unit"),
+        "not present in child"
+    )
+})
+
+
+# @mapping mutation — gmulti stability around the edit ####
+
+test_that("mapping edit leaves @objects untouched", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    objects_before <- mg@objects
+
+    gmultiMapping(mg, "spat_unit", "cell") <- c(a = "cell", b = "cell")
+
+    expect_identical(mg@objects, objects_before)
+})
+
+test_that("mapping edit leaves @id_map untouched", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    idmap_before <- mg@id_map
+
+    gmultiMapping(mg, "feat_type", "rna") <- c(a = "rna", b = "rna")
+
+    expect_identical(mg@id_map, idmap_before)
+})
+
+test_that("mapping edit only invalidates affected universes; others survive", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    # Stub a second spat_unit ("nucleus") joint expression so we have
+    # two universes to compare.
+    mg@expression <- list(
+        cell = list(rna = list(raw = "stub_cell_rna")),
+        nucleus = list(rna = list(raw = "stub_nucleus_rna"))
+    )
+
+    # Edit the cell mapping's per-sample vector — invalidates cell only.
+    gmultiMapping(mg, "spat_unit", "cell") <- c(a = "cell")
+
+    expect_null(mg@expression$cell)
+    expect_identical(mg@expression$nucleus,
+        list(rna = list(raw = "stub_nucleus_rna")))
+})
+
+test_that("spatIDs / featIDs still functional after mapping edit", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    cells_before <- spatIDs(mg)
+    feats_before <- featIDs(mg)
+    gmultiMapping(mg, "feat_type", "rna") <- c(a = "rna", b = "rna")
+    expect_identical(spatIDs(mg), cells_before)
+    expect_identical(featIDs(mg), feats_before)
+})
