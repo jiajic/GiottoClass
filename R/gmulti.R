@@ -718,40 +718,36 @@ setMethod("show", "giottoMulti", function(object) {
 #' introducing NAs), cbind. The first child's exprObj is used as the metadata
 #' template (spat_unit, feat_type, name) with its matrix replaced.
 #'
-#' Nesting args (`spat_unit`, `feat_type`) are resolved per-child when NULL:
-#' each child uses its own active default. When supplied explicitly they're
-#' broadcast across all children (must match in each). The joint global
-#' namespace is `sample::id` regardless — children with different per-child
-#' spat_unit layouts still contribute correctly.
+#' Federation is driven by `@mapping`. The (spat_unit, feat_type) handles
+#' resolve to per-sample child-level slot names via [.gm_resolve_axis];
+#' samples not in both axes' participation sets do not contribute.
+#'
+#' When `@mapping` is empty for an axis (e.g. legacy gmulti without a
+#' populated mapping), falls back to per-child `set_default_spat_unit` /
+#' `set_default_feat_type` resolution against every child — matches the
+#' pre-`@mapping` behavior so old objects keep working.
 #'
 #' Called by `getExpression(giottoMulti, ...)` when `@expression` is empty.
 #' This is the baseline view; integration tools (Harmony, scVI, etc.) overwrite
 #' it via `setExpression(mg, joint)` once they've produced a corrected matrix.
 #' @noRd
 .gm_assemble_expression <- function(gobject, spat_unit, feat_type, values) {
-    children <- names(gobject)
-    if (length(children) == 0L) {
+    if (length(gobject@objects) == 0L) {
         stop("giottoMulti has no children to assemble expression from",
             call. = FALSE)
     }
 
-    user_su <- !is.null(spat_unit)
-    user_ft <- !is.null(feat_type)
+    resolved <- .gm_resolve_participation(gobject, spat_unit, feat_type)
+    children <- names(resolved)
+    if (length(children) == 0L) {
+        stop(wrap_txt("No children participate in the requested
+            (spat_unit, feat_type) federation. Check `gmultiMapping(mg)`
+            or pass `spat_unit` / `feat_type` arguments that map to
+            declared handles."), call. = FALSE)
+    }
 
-    # Per-child resolved nesting (used both for finding common `values` and
-    # for the actual fetch loop below).
-    resolved <- lapply(children, function(nm) {
-        g <- gobject@objects[[nm]]
-        su <- if (user_su) spat_unit
-            else tryCatch(set_default_spat_unit(g), error = function(e) NA_character_)
-        ft <- if (user_ft) feat_type
-            else tryCatch(set_default_feat_type(g, spat_unit = su),
-                error = function(e) NA_character_)
-        list(su = su, ft = ft)
-    })
-
-    # When `values` is not given, pick the first name common to all children
-    # under each child's resolved nesting.
+    # When `values` is not given, pick the first name common to all
+    # participating children under each child's resolved nesting.
     if (is.null(values)) {
         avail_per_child <- mapply(function(nm, r) {
             g <- gobject@objects[[nm]]
@@ -810,28 +806,24 @@ setMethod("show", "giottoMulti", function(object) {
 
 #' Assemble joint cell metadata from children's per-child cell metadata.
 #'
-#' Pulls each child's cellMetaObj for the resolved nesting, prefixes cell_ID
+#' Pulls each child's cellMetaObj for the federated nesting, prefixes cell_ID
 #' to globals (sample::id), and rbinds. Columns are intersected across
 #' children to avoid NA inflation (the common case has matching schema; in
 #' the worst case the intersection at minimum has cell_ID).
+#'
+#' Federation driven by `@mapping`. Samples not in the resolved participation
+#' set for the requested (spat_unit, feat_type) do not contribute.
 #'
 #' Called by `getCellMetadata(giottoMulti, ...)` when the joint slot is
 #' empty. The first child's cellMetaObj is the metadata template.
 #' @noRd
 .gm_assemble_cell_metadata <- function(gobject, spat_unit, feat_type) {
-    children <- names(gobject)
-    user_su <- !is.null(spat_unit)
-    user_ft <- !is.null(feat_type)
+    resolved <- .gm_resolve_participation(gobject, spat_unit, feat_type)
+    children <- names(resolved)
 
-    per_child <- lapply(children, function(nm) {
+    per_child <- mapply(function(nm, r) {
         g <- gobject@objects[[nm]]
-        su <- if (user_su) spat_unit
-            else tryCatch(set_default_spat_unit(g),
-                error = function(e) NA_character_)
-        ft <- if (user_ft) feat_type
-            else tryCatch(set_default_feat_type(g, spat_unit = su),
-                error = function(e) NA_character_)
-        cm <- tryCatch(getCellMetadata(g, spat_unit = su, feat_type = ft,
+        cm <- tryCatch(getCellMetadata(g, spat_unit = r$su, feat_type = r$ft,
             output = "cellMetaObj", set_defaults = FALSE),
             error = function(e) NULL)
         if (is.null(cm)) return(NULL)
@@ -842,7 +834,7 @@ setMethod("show", "giottoMulti", function(object) {
         # default) work out of the box on the assembled multi metadata.
         dt[, list_ID := nm]
         list(cm = cm, dt = dt)
-    })
+    }, children, resolved, SIMPLIFY = FALSE)
     per_child <- Filter(Negate(is.null), per_child)
     if (length(per_child) == 0L) {
         stop("No child has cell metadata for the requested nesting",
@@ -864,26 +856,22 @@ setMethod("show", "giottoMulti", function(object) {
 #' (no global namespacing), so the rbind happens directly; rows for the
 #' same feature across children are deduplicated by `feat_ID` (first
 #' child's row wins — typical assumption is shared panel).
+#'
+#' Federation driven by `@mapping`. Samples not in the resolved participation
+#' set for the requested (spat_unit, feat_type) do not contribute.
 #' @noRd
 .gm_assemble_feat_metadata <- function(gobject, spat_unit, feat_type) {
-    children <- names(gobject)
-    user_su <- !is.null(spat_unit)
-    user_ft <- !is.null(feat_type)
+    resolved <- .gm_resolve_participation(gobject, spat_unit, feat_type)
+    children <- names(resolved)
 
-    per_child <- lapply(children, function(nm) {
+    per_child <- mapply(function(nm, r) {
         g <- gobject@objects[[nm]]
-        su <- if (user_su) spat_unit
-            else tryCatch(set_default_spat_unit(g),
-                error = function(e) NA_character_)
-        ft <- if (user_ft) feat_type
-            else tryCatch(set_default_feat_type(g, spat_unit = su),
-                error = function(e) NA_character_)
-        fm <- tryCatch(getFeatureMetadata(g, spat_unit = su, feat_type = ft,
+        fm <- tryCatch(getFeatureMetadata(g, spat_unit = r$su, feat_type = r$ft,
             output = "featMetaObj", set_defaults = FALSE),
             error = function(e) NULL)
         if (is.null(fm)) return(NULL)
         list(fm = fm, dt = data.table::copy(fm[]))
-    })
+    }, children, resolved, SIMPLIFY = FALSE)
     per_child <- Filter(Negate(is.null), per_child)
     if (length(per_child) == 0L) {
         stop("No child has feature metadata for the requested nesting",
@@ -976,6 +964,115 @@ setMethod("show", "giottoMulti", function(object) {
         spat_unit = discover_axis("cell_ID"),
         feat_type = discover_axis("feat_ID")
     )
+}
+
+# Resolve participation + per-sample child-level name for a gmulti-level
+# handle on a given axis. The primary path consults `@mapping`; a
+# legacy-compatible fallback inspects child slot keys directly when the
+# mapping has no entry for the handle (e.g. children added after init
+# without a `gmultiMapping<- NULL` re-discovery).
+#
+# @param gobject giottoMulti
+# @param axis "spat_unit" or "feat_type"
+# @param handle gmulti-level name; when NULL, picks the first entry in
+#   @mapping for the axis (deterministic default). If @mapping is empty
+#   for the axis, returns an empty named char — caller must fall back to
+#   per-child default resolution (set_default_spat_unit / _feat_type).
+#
+# @returns named character vector. Names = participating sample names.
+#   Values = child-level slot name in that sample. Length 0 means
+#   "fall back to legacy per-child defaults."
+#' @noRd
+.gm_resolve_axis <- function(gobject, axis, handle = NULL) {
+    axis_map <- gobject@mapping[[axis]] %||% list()
+
+    if (is.null(handle)) {
+        if (length(axis_map) == 0L) return(character())
+        handle <- names(axis_map)[[1L]]
+    }
+
+    if (handle %in% names(axis_map)) {
+        out <- axis_map[[handle]]
+        # drop any samples no longer in @objects (defensive — shouldn't
+        # happen post-validation, but mapping can drift if children are
+        # popped without re-init)
+        out <- out[names(out) %in% names(gobject@objects)]
+        return(out)
+    }
+
+    # Fallback: handle not declared in @mapping. Treat gmulti-name ==
+    # child-name and find samples whose child slot carries it.
+    child_slot <- switch(axis,
+        spat_unit = "cell_ID",
+        feat_type = "feat_ID",
+        stop("[.gm_resolve_axis] unknown axis: ", axis, call. = FALSE))
+    samples <- names(gobject@objects)
+    have <- vapply(samples, function(s) {
+        keys <- tryCatch(names(slot(gobject@objects[[s]], child_slot)),
+            error = function(e) character())
+        handle %in% keys
+    }, logical(1L))
+    samples <- samples[have]
+    if (length(samples) == 0L) return(character())
+    stats::setNames(rep(handle, length(samples)), samples)
+}
+
+# Resolve the federation: per-sample (spat_unit, feat_type) child-level
+# names for a given pair of gmulti-level handles. Combines two
+# [.gm_resolve_axis] calls and intersects the participating samples.
+#
+# When both axes resolve via @mapping, the result includes only samples
+# present in BOTH per-sample vectors (intersection).
+#
+# When EITHER axis falls back to legacy (mapping empty for that axis),
+# the corresponding side iterates every child via the legacy default
+# resolution (set_default_spat_unit / set_default_feat_type). This
+# preserves backwards compat with gmulti objects whose @mapping wasn't
+# populated.
+#
+# @returns named list of `list(su = "<child_su>", ft = "<child_ft>")`
+#   keyed by sample name. Empty list if no sample participates.
+#' @noRd
+.gm_resolve_participation <- function(gobject, spat_unit, feat_type) {
+    su_map <- .gm_resolve_axis(gobject, "spat_unit", spat_unit)
+    ft_map <- .gm_resolve_axis(gobject, "feat_type", feat_type)
+
+    # Legacy fallback when an axis has no resolution (empty @mapping +
+    # no usable child slot keys). We synthesize the per-child default
+    # resolution that the pre-@mapping helpers used.
+    legacy_resolve <- function(axis_arg, axis_default_fn) {
+        out <- vapply(names(gobject@objects), function(nm) {
+            g <- gobject@objects[[nm]]
+            if (!is.null(axis_arg)) return(axis_arg)
+            tryCatch(axis_default_fn(g), error = function(e) NA_character_)
+        }, character(1L))
+        out <- out[!is.na(out)]
+        out
+    }
+    if (length(su_map) == 0L) {
+        su_map <- legacy_resolve(spat_unit, function(g) set_default_spat_unit(g))
+    }
+    if (length(ft_map) == 0L) {
+        # ft depends on the resolved su per-child; pull each child's su
+        # from the (already legacy-resolved or @mapping-resolved) su_map
+        out <- vapply(names(gobject@objects), function(nm) {
+            g <- gobject@objects[[nm]]
+            if (!is.null(feat_type)) return(feat_type)
+            tryCatch(set_default_feat_type(g, spat_unit = su_map[[nm]]),
+                error = function(e) NA_character_)
+        }, character(1L))
+        out <- out[!is.na(out)]
+        ft_map <- out
+    }
+
+    participants <- intersect(names(su_map), names(ft_map))
+    if (length(participants) == 0L) return(list())
+
+    out <- lapply(participants, function(nm) {
+        list(su = unname(su_map[nm]), ft = unname(ft_map[nm]))
+    })
+    names(out) <- participants
+    out
 }
 
 #' @noRd

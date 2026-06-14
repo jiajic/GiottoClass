@@ -1171,3 +1171,108 @@ test_that("spatIDs / featIDs still functional after mapping edit", {
     expect_identical(spatIDs(mg), cells_before)
     expect_identical(featIDs(mg), feats_before)
 })
+
+
+# @mapping-driven federation — phase 2 ####
+
+.mk_minimal_feat <- function(ncell, nfeat, feat_type = "rna") {
+    m <- matrix(0, nrow = nfeat, ncol = ncell)
+    rownames(m) <- paste0("f", seq_len(nfeat))
+    colnames(m) <- paste0("c", seq_len(ncell))
+    createGiottoObject(expression = m, expression_feat = feat_type,
+        verbose = FALSE)
+}
+
+test_that("auto-discovery puts differently-named feat_types in separate entries", {
+    g1 <- .mk_minimal_feat(5, 4, feat_type = "rna")
+    g2 <- .mk_minimal_feat(3, 4, feat_type = "transcripts")
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    m <- gmultiMapping(mg, "feat_type")
+    # Both names live as separate entries; auto-discovery never silently
+    # equates differently-named slots.
+    expect_setequal(names(m), c("rna", "transcripts"))
+    expect_identical(m$rna, c(a = "rna"))
+    expect_identical(m$transcripts, c(b = "transcripts"))
+})
+
+test_that("user-edited mapping unifies differently-named feat_types under one handle", {
+    g1 <- .mk_minimal_feat(5, 4, feat_type = "rna")
+    g2 <- .mk_minimal_feat(3, 4, feat_type = "transcripts")
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    # Declare that the two are the same modality at the gmulti level.
+    gmultiMapping(mg, "feat_type", "rna") <- c(a = "rna", b = "transcripts")
+    gmultiMapping(mg, "feat_type", "transcripts") <- NULL
+
+    expect_identical(gmultiMapping(mg, "feat_type")$rna,
+        c(a = "rna", b = "transcripts"))
+    expect_null(gmultiMapping(mg, "feat_type")$transcripts)
+
+    # Federation: getCellMetadata should pull from BOTH children under the
+    # unified handle. 5 + 3 = 8 rows.
+    cm <- getCellMetadata(mg, feat_type = "rna", output = "data.table")
+    expect_identical(nrow(cm), 8L)
+    expect_setequal(cm$list_ID, c("a", "b"))
+})
+
+test_that("federation respects participation: sample not in mapping doesn't contribute", {
+    g1 <- .mk_minimal_feat(5, 4, feat_type = "rna")
+    g2 <- .mk_minimal_feat(3, 4, feat_type = "rna")
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    # Drop b from the rna mapping
+    gmultiMapping(mg, "feat_type", "rna") <- c(a = "rna")
+
+    cm <- getCellMetadata(mg, feat_type = "rna", output = "data.table")
+    expect_identical(nrow(cm), 5L)
+    expect_identical(unique(cm$list_ID), "a")
+})
+
+test_that(".gm_resolve_axis returns @mapping entry when handle declared", {
+    g1 <- .mk_minimal_feat(5, 4, feat_type = "rna")
+    g2 <- .mk_minimal_feat(3, 4, feat_type = "transcripts")
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    gmultiMapping(mg, "feat_type", "rna") <- c(a = "rna", b = "transcripts")
+
+    out <- GiottoClass:::.gm_resolve_axis(mg, "feat_type", "rna")
+    expect_identical(out, c(a = "rna", b = "transcripts"))
+})
+
+test_that(".gm_resolve_axis falls back to child slot scan for undeclared handle", {
+    g1 <- .mk_minimal_feat(5, 4, feat_type = "rna")
+    g2 <- .mk_minimal_feat(3, 4, feat_type = "rna")
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    # Force-clear the rna entry to simulate an undeclared handle that
+    # still has matching child slots.
+    gmultiMapping(mg, "feat_type", "rna") <- NULL
+
+    out <- GiottoClass:::.gm_resolve_axis(mg, "feat_type", "rna")
+    # Fallback path: scans children and finds "rna" exists in both.
+    expect_identical(out, c(a = "rna", b = "rna"))
+})
+
+test_that("federation falls back to legacy per-child defaults when @mapping empty", {
+    g1 <- .mk_minimal_feat(5, 4, feat_type = "rna")
+    g2 <- .mk_minimal_feat(3, 4, feat_type = "rna")
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    # Wipe the mapping entirely — simulates a gmulti created before @mapping
+    # existed, or one where the user has dropped all entries.
+    mg@mapping <- list(spat_unit = list(), feat_type = list())
+
+    cm <- getCellMetadata(mg, output = "data.table")
+    expect_identical(nrow(cm), 8L)
+    expect_setequal(unique(cm$list_ID), c("a", "b"))
+})
+
+test_that("joint expression federation pulls under user-unified handle", {
+    g1 <- .mk_minimal_feat(5, 4, feat_type = "rna")
+    g2 <- .mk_minimal_feat(3, 4, feat_type = "transcripts")
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    gmultiMapping(mg, "feat_type", "rna") <- c(a = "rna", b = "transcripts")
+    gmultiMapping(mg, "feat_type", "transcripts") <- NULL
+
+    mat <- getExpression(mg, feat_type = "rna", output = "matrix")
+    expect_identical(ncol(mat), 8L)  # 5 + 3
+    expect_true(all(grepl("^[ab]::c[0-9]+$", colnames(mat))))
+})
