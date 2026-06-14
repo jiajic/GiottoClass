@@ -1402,3 +1402,80 @@ test_that("getFeatureMetadata(sample = ) errors on invalid sample", {
         "Must be element of"
     )
 })
+
+
+# federatedReadHandle — phase 5 ####
+
+test_that("federatedReadHandle constructs from a list + combine fn", {
+    h <- federatedReadHandle(
+        substores = list(a = matrix(1, 2, 2), b = matrix(2, 2, 2)),
+        combine = function(substores, keys, ...) do.call(cbind, substores)
+    )
+    expect_s4_class(h, "federatedReadHandle")
+    expect_identical(length(h), 2L)
+    expect_identical(names(h), c("a", "b"))
+})
+
+test_that("federatedReadHandle keys default to names(substores)", {
+    h <- federatedReadHandle(
+        substores = list(x = 1, y = 2),
+        combine = function(substores, keys, ...) substores
+    )
+    expect_identical(names(h), c("x", "y"))
+})
+
+test_that("federatedReadHandle requires substores and combine", {
+    expect_error(federatedReadHandle(
+        combine = function(substores, keys, ...) substores),
+        "`substores` is required")
+    expect_error(federatedReadHandle(substores = list(a = 1)),
+        "`combine` is required")
+})
+
+test_that("federatedReadHandle [[ extracts by name or index", {
+    h <- federatedReadHandle(
+        substores = list(a = "alpha", b = "beta"),
+        combine = function(substores, keys, ...) substores
+    )
+    expect_identical(h[["a"]], "alpha")
+    expect_identical(h[[2L]], "beta")
+    expect_error(h[["nope"]], "not in handle")
+})
+
+test_that("materialize() folds substores via combine", {
+    h <- federatedReadHandle(
+        substores = list(a = matrix(1, 2, 2), b = matrix(2, 2, 2)),
+        combine = function(substores, keys, ...) do.call(cbind, substores)
+    )
+    out <- materialize(h)
+    expect_true(is.matrix(out))
+    expect_identical(dim(out), c(2L, 4L))
+})
+
+test_that("materialize() passes `as` and `meta` to combine", {
+    h <- federatedReadHandle(
+        substores = list(a = 1, b = 2),
+        output_class = "list",
+        meta = list(mode = "sum"),
+        combine = function(substores, keys, as = NULL, meta = list(), ...) {
+            list(as = as, mode = meta$mode, n = length(substores))
+        }
+    )
+    out <- materialize(h)
+    expect_identical(out$as, "list")
+    expect_identical(out$mode, "sum")
+    expect_identical(out$n, 2L)
+    # `as = ` override
+    out2 <- materialize(h, as = "vector")
+    expect_identical(out2$as, "vector")
+})
+
+test_that("show() prints handle summary without erroring", {
+    h <- federatedReadHandle(
+        substores = list(a = matrix(1, 2, 2), b = matrix(2, 2, 2)),
+        output_class = "matrix",
+        combine = function(substores, keys, ...) do.call(cbind, substores)
+    )
+    expect_output(show(h), "federatedReadHandle.*2 substores")
+    expect_output(show(h), "default output class: matrix")
+})
