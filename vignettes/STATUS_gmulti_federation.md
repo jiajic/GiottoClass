@@ -2,9 +2,13 @@
 
 Companion to [DESIGN_gmulti_federation.md](DESIGN_gmulti_federation.md). This file tracks **only the four implementation phases currently in scope** — what's landed, what's planned, what's deferred.
 
-**Branch**: `feature/gmulti-federation-design` (off `feature/giotto-view`)
-**Worktree**: `/Users/george/Documents/GitHub/GiottoClass-federation-design`
-**Test count baseline**: 174 PASS on parent branch (before this work); 242 PASS as of phase 3 (+ 1 pre-existing snapshotSave failure unrelated to this work).
+**Branches** (both `feature/gmulti-federation-design`):
+- GiottoClass: `/Users/george/Documents/GitHub/GiottoClass-federation-design` (off `feature/giotto-view`)
+- GiottoVisuals: `/Users/george/Documents/GitHub/GiottoVisuals-federation-design` (off `gsource`)
+
+**Test counts**:
+- GiottoClass: 174 PASS on parent branch (before this work); 259 PASS as of phase 5 (+ 1 pre-existing snapshotSave failure unrelated to this work).
+- GiottoVisuals: 12 PASS for the new dispatcher tests (phase 4); pre-existing tests for color palettes + save unchanged.
 
 ---
 
@@ -61,52 +65,44 @@ getExpression(mg, values = "B191::raw")
 getSpatialLocations(mg, sample = "B191")
 ```
 
+### Phase 4 — Dispatcher cleanup
+
+GiottoVisuals commit `ba5a263` (on the GiottoVisuals worktree's `feature/gmulti-federation-design` branch).
+
+- Reworked `.gg_multi_dispatch_spatial`:
+  - New `samples =` param replaces the previous abuse of `space =` as a sample-name vector. `space =` is now strictly a defined-coord-frame reference.
+  - New `.resolve_samples(gobject, samples, space, child_names)`: auto-injects samples from `names(space@samples)` when `samples = NULL` and a defined space is supplied. Errors on samples not in `@objects` or not in the space's participation set.
+  - New `.gg_build_panel_child(gobject, sample)`: produces the per-panel child by starting from the gmulti's child and projecting joint-only `@cell_metadata` columns onto it via the phase 3 access layer (`getCellMetadata(mg, sample = ...)` + `addCellMetadata`). **No `:::` reach** — uses only exported GiottoClass APIs.
+- Plot fn signatures across `vis_spatial_gg.R` + `vis_spatial_in_situ.R` gained `samples = NULL` formal alongside `view` / `space`; dispatch sites forward it. Affects spatPlot2D / spatDimPlot2D / dimPlot2D / spatDimFeatPlot / spatInSituPlotPoints / Density / Hex and family.
+- 9 new `test_that` blocks in `tests/testthat/test_gmulti_dispatch.R` (GiottoVisuals). 12 PASS.
+
+After phase 4:
+- The dispatcher's previous `space = c("A","B")` abuse is gone.
+- Cross-sample defined-space panels become expressible via `space = "atlas"` (which auto-derives samples). Their actual cross-panel rendering remains deferred (separate design).
+- No `:::` into GiottoClass anywhere in GiottoVisuals.
+
+### Phase 5 — `federatedReadHandle` wrapper class
+
+Commit `0edc4504` (GiottoClass) + commit `6a966697` (phase 3 doc regen).
+
+- New S4 class `federatedReadHandle` in `R/classes-federatedRead.R`: holds a per-sample list of fragments + a `combine` function + an `output_class` hint + opaque `meta`. Consumers call `materialize()` (or `[[`) when they need a concrete object.
+- Public constructor `federatedReadHandle(substores, keys, output_class, combine, meta)`.
+- Methods: `length()`, `names()`, `[[`, `show()`, `materialize()` with optional `as = ` override.
+- Mirror of `unionParquetGeomStore` in GiottoDisk one rung up: any list of fragments + combine fn, not just parquet substores.
+- 7 new `test_that` blocks. 259 PASS in the gmulti suite (was 242).
+
+**Scope of phase 5 is structural only.** Wiring the existing federation helpers (`.gm_assemble_expression` etc.) to RETURN a `federatedReadHandle` rather than an eager combined object is opt-in for downstream work (e.g. duckdb / sedonadb lowering of expression queries). Existing eager paths keep their current behavior unchanged.
+
+After phase 5, the class is ready for these follow-on uses:
+1. Returning a federation handle when getters detect file-backed substores (atlas-scale parquet expression stores).
+2. Lowering federation into a single SQL plan when consumed by duckdb / sedonadb.
+3. Arrow-side concat at materialize time for in-memory consumers.
+
 ---
 
-## Planned — phase 4 (next up)
+## Deferred — phase 6 (NOT in scope right now)
 
-**Dispatcher cleanup: `samples =` arg + drop `:::` reach into GiottoClass internals.**
-
-Touches: `GiottoVisuals/R/gmulti.R` (the `.gg_multi_dispatch_spatial` helper), and the top-level spatial plot fns that accept `space =` for sample selection.
-
-Concrete changes:
-1. Rename `space` → `samples` in `.gg_multi_dispatch_spatial`. Today `space =` is typed as a character vector of sample names — semantic misnomer. After phase 4, `space =` only takes real defined-space names from `@spaces`.
-2. Implement `.resolve_samples(gobject, samples, space)`: when `space = "atlas"` is passed and `samples = NULL`, derive `samples` from `names(atlas@samples)` (the auto-injection convention already documented in the view/space design memory).
-3. Drop the scratch-child injection. Per-panel slicing now goes through the access-layer `sample =` arg from phase 3:
-   ```r
-   plots <- lapply(samples, function(s) {
-       a <- named
-       a$gobject <- gobject  # gmulti, not a child
-       a$sample <- s
-       do.call(plot_fn, c(a, dots))
-   })
-   ```
-4. Delete `.gm_inject_joint_metadata` from `R/gmulti.R` (in GiottoClass). The only caller was the GiottoVisuals dispatcher; with phase 3 in place that caller doesn't need it anymore.
-5. Drop the `GiottoClass:::` reference in `GiottoVisuals/R/gmulti.R:99`. R CMD check NOTE on GiottoVisuals goes away.
-6. Update each spatial plot fn (`spatPlot2D`, `spatInSituPlotPoints`, `dimPlot2D`, etc.) to accept `samples =` and pass it through to the dispatcher. Update plot fn signatures to also accept `sample =` (forwarded to getters internally) for the per-panel call from the dispatcher.
-
-Tests:
-- Dispatcher receives `samples =` and iterates correctly.
-- `space = "atlas"` derives samples via auto-injection.
-- Conflicting `samples =` + `space@samples` keys (sample not in atlas) error.
-- Plot fn output unchanged from current behavior on existing test cases.
-- GiottoVisuals R CMD check no longer flags the `:::` use.
-
-Estimated scope: ~50 lines of edits across two repos (GiottoClass + GiottoVisuals), bulk in plot fn signatures. No new classes, no new slots.
-
----
-
-## Deferred — phases 5–6 (NOT in scope right now)
-
-These are real follow-ons but not blocking. Land them when a concrete workflow needs them.
-
-### Phase 5 — Federated-read wrapper class
-
-When getters like `getExpression(mg, sample = NULL)` return cross-sample federations, today they're either an eager combined object (current behavior post-assembly) or a list-of-substores when assembly hasn't happened.
-
-The wrapper class (`federatedReadHandle` or similar) would let the materialization decision defer to the consumer — duckdb/sedonadb queries lower into a single SQL plan over the list-of-substores; arrow consumers concat at use time. Mirrors `unionParquetGeomStore` in GiottoDisk.
-
-Why deferred: list-of-substores works today via the existing assembly path. The wrapper class is a perf/laziness optimization for specific consumers, not a correctness fix.
+A real follow-on but not blocking. Land it when a concrete workflow needs it.
 
 ### Phase 6 — Pointer-class for `@spatial_info`
 
@@ -130,15 +126,27 @@ Items the design doc explicitly identifies as needing their own design — do no
 
 ## Files touched so far
 
+GiottoClass:
 ```
 R/gmulti.R                         (+ ~510 lines net across phases 1-3)
-NAMESPACE                          (+ 4 exports: gmultiMapping, gmultiMapping<-)
+R/classes-federatedRead.R          (new — phase 5)
+NAMESPACE                          (+ exports: gmultiMapping, gmultiMapping<-, federatedReadHandle)
 man/giottoMulti-class.Rd           (regenerated)
 man/gmultiMapping.Rd               (new)
-tests/testthat/test-gmulti.R       (+ 26 new test_that blocks)
+man/federatedReadHandle*.Rd        (new — phase 5)
+man/get*.Rd                        (8 manpages regenerated for phase 3 sample= arg)
+tests/testthat/test-gmulti.R       (+ 33 new test_that blocks across phases 1-5)
 ```
 
-No changes outside GiottoClass yet. Phase 4 will touch GiottoVisuals as well.
+GiottoVisuals (phase 4):
+```
+R/gmulti.R                         (~218 lines net — full rewrite of dispatcher + new helpers)
+R/vis_spatial_gg.R                 (+ samples= formal across plot fn signatures)
+R/vis_spatial_in_situ.R            (+ samples= formal across plot fn signatures)
+DESCRIPTION                        (Collate field updated)
+tests/testthat/test_gmulti_dispatch.R  (new — 9 new test_that blocks, 12 PASS)
+man/*.Rd                           (16 manpages regenerated)
+```
 
 ---
 
@@ -148,4 +156,4 @@ No changes outside GiottoClass yet. Phase 4 will touch GiottoVisuals as well.
 - Memory entry that indexes both files: `project_gmulti_federation_design.md`
 - Foundation memory (view/space split — load-bearing for §2 of the design doc): `project_giottoview_design_shape.md`
 
-*Last updated after phase 3 (2026-06-14). Update on phase 4 landing.*
+*Last updated after phase 5 (2026-06-14).*
