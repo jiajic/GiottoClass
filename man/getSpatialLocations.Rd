@@ -21,7 +21,7 @@ getSpatialLocations(gobject, ...)
   space = NULL
 )
 
-\S4method{getSpatialLocations}{giottoMulti}(gobject, object = NULL, ...)
+\S4method{getSpatialLocations}{giottoMulti}(gobject, object = NULL, ..., sample = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

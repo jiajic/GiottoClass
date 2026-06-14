@@ -18,7 +18,7 @@ getFeatureInfo(gobject, ...)
   space = NULL
 )
 
-\S4method{getFeatureInfo}{giottoMulti}(gobject, object = NULL, ...)
+\S4method{getFeatureInfo}{giottoMulti}(gobject, object = NULL, ..., sample = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

@@ -26,7 +26,8 @@ getExpression(gobject, ...)
   spat_unit = NULL,
   feat_type = NULL,
   output = c("exprObj", "matrix"),
-  set_defaults = TRUE
+  set_defaults = TRUE,
+  sample = NULL
 )
 }
 \arguments{
