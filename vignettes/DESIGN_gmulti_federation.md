@@ -410,7 +410,7 @@ Explicitly out of scope, to avoid scope creep:
 
 **Where sdata wins**: atlas-frame aggregation with `target_coordinate_system` baked into the data model. Catching up requires the aggregation dispatch follow-on (see §10).
 
-**Why the chosen tradeoffs**: in spatial omics workflows we actually see (most Giotto users, dissertation work, Whitney TNBC), per-sample axes are load-bearing in more analyses than cross-sample aggregation. The aggregation case is real but narrow; the cost of adding aggregation infrastructure on top of orthogonal axes is lower than the cost of working around the absence of a first-class sample axis in every per-sample workflow.
+**Why the chosen tradeoffs**: in the spatial omics workflows Giotto targets, per-sample axes are load-bearing in more analyses than cross-sample aggregation. The aggregation case is real but narrow; the cost of adding aggregation infrastructure on top of orthogonal axes is lower than the cost of working around the absence of a first-class sample axis in every per-sample workflow.
 
 ---
 
