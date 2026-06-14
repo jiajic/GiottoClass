@@ -96,6 +96,18 @@
 #' @slot objects named `list` of `giotto` objects (children)
 #' @slot id_map `list` with elements `cells` and `feats`, each a `data.table`
 #'   mapping `(object, local_id) → global_id`
+#' @slot mapping `list` declaring how child-level spat_units and feat_types
+#'   federate up to gmulti-level handles. Two named entries:
+#'   * `spat_unit` — list of named character vectors. Top-level names are
+#'     gmulti-level spat_unit handles; each vector maps `sample → child-level
+#'     spat_unit name` (handles per-child name variation; partial coverage
+#'     is fine).
+#'   * `feat_type` — same shape, for feature types.
+#'
+#'   Auto-discovered at construction via the symmetric trivial mapping
+#'   (gmulti-level handle == child-level name); customisable post-init
+#'   via [gmultiMapping<-]. See `vignettes/DESIGN_gmulti_federation.md`
+#'   for the full design.
 #'
 #' @slot expression shared expression matrices (rows = union of features,
 #'   cols = global cell IDs)
@@ -128,6 +140,7 @@ giottoMulti <- setClass(
         objects             = "list",
         id_map              = "list",
         id_sig              = "list",
+        mapping             = "list",
 
         # shared-domain (names aligned with giotto)
         expression          = "nullOrList",
@@ -154,6 +167,7 @@ giottoMulti <- setClass(
         objects             = list(),
         id_map              = list(cells = NULL, feats = NULL),
         id_sig              = list(),
+        mapping             = list(spat_unit = list(), feat_type = list()),
 
         expression          = NULL,
         expression_feat     = NULL,
@@ -230,6 +244,17 @@ setMethod("initialize", signature("giottoMulti"), function(.Object, objects = NU
         .Object@id_sig <- cur_sig
         .Object@cell_ID <- NULL
         .Object@feat_ID <- NULL
+    }
+
+    # mapping: auto-discover only when empty (first construction). A
+    # user-customised mapping survives bare re-init; population changes
+    # that introduce new spat_units / feat_types not yet declared in the
+    # mapping require an explicit gmultiMapping<- edit (or full re-discovery
+    # via gmultiMapping(mg) <- NULL, which triggers fresh auto-discovery).
+    mapping_empty <- length(.Object@mapping$spat_unit) == 0L &&
+        length(.Object@mapping$feat_type) == 0L
+    if (mapping_empty) {
+        .Object@mapping <- .gm_discover_mapping(.Object@objects)
     }
 
     .Object
@@ -581,6 +606,29 @@ setMethod("show", "giottoMulti", function(object) {
             paste(names(slot_check)[populated], collapse = ", ")))
     }
 
+    # mapping: which spat_units / feat_types federate across children.
+    # One-line summary per axis listing the gmulti-level handles and the
+    # number of participating samples.
+    su_map <- object@mapping$spat_unit
+    ft_map <- object@mapping$feat_type
+    fmt_axis <- function(axis_list) {
+        if (length(axis_list) == 0L) return(NULL)
+        entries <- vapply(names(axis_list), function(h) {
+            sprintf("%s (%d)", h, length(axis_list[[h]]))
+        }, character(1L))
+        paste(entries, collapse = ", ")
+    }
+    su_line <- fmt_axis(su_map)
+    ft_line <- fmt_axis(ft_map)
+    if (!is.null(su_line) || !is.null(ft_line)) {
+        if (!is.null(su_line)) {
+            cat(sprintf("  spat_unit: %s\n", su_line))
+        }
+        if (!is.null(ft_line)) {
+            cat(sprintf("  feat_type: %s\n", ft_line))
+        }
+    }
+
     invisible(NULL)
 })
 
@@ -885,6 +933,51 @@ setMethod("show", "giottoMulti", function(object) {
     data.table::rbindlist(parts)
 }
 
+# Auto-discover the federation mapping from a list of child gobjects.
+#
+# Walks each child's @cell_ID / @feat_ID slot keys (the authoritative source
+# of which spat_units / feat_types exist in that child) and assembles the
+# symmetric trivial mapping: for every (gmulti_handle, sample) pair where
+# the child has a slot named `gmulti_handle`, populate
+# `mapping$<axis>$<gmulti_handle>[<sample>] = "<gmulti_handle>"`.
+#
+# Children with non-matching names (e.g. "rna" in B191 vs "transcripts" in
+# B215 for the same modality) get separate entries by name — auto-discovery
+# never silently equates differently-named slots. Users reconcile post-init
+# via `gmultiMapping<-`.
+#
+# Empty children (no slot keys) contribute nothing.
+#
+# @returns list with two named entries (spat_unit, feat_type), each holding
+#   a list of per-sample-keyed character vectors. Empty list() for either
+#   axis when no children carry that axis.
+#' @noRd
+.gm_discover_mapping <- function(objects) {
+    if (length(objects) == 0L) {
+        return(list(spat_unit = list(), feat_type = list()))
+    }
+    discover_axis <- function(slot_name) {
+        per_child <- lapply(objects, function(g) {
+            nms <- tryCatch(names(slot(g, slot_name)),
+                error = function(e) character())
+            if (is.null(nms)) character() else nms
+        })
+        all_names <- unique(unlist(per_child, use.names = FALSE))
+        if (length(all_names) == 0L) return(list())
+        out <- lapply(all_names, function(nm) {
+            samples <- names(per_child)[vapply(per_child,
+                function(x) nm %in% x, logical(1L))]
+            stats::setNames(rep(nm, length(samples)), samples)
+        })
+        names(out) <- all_names
+        out
+    }
+    list(
+        spat_unit = discover_axis("cell_ID"),
+        feat_type = discover_axis("feat_ID")
+    )
+}
+
 #' @noRd
 .gm_build_feat_idmap <- function(objects) {
     parts <- lapply(names(objects), function(nm) {
@@ -937,6 +1030,181 @@ setMethod("idMap", "giottoMulti", function(x, which = c("cells", "feats"), ...) 
     which <- match.arg(which, c("cells", "feats"))
     x@id_map[[which]]
 })
+
+
+# mapping accessor — declares child-level federation per spat_unit / feat_type ####
+
+#' @title gmulti federation mapping accessor
+#' @name gmultiMapping
+#' @description
+#' Get or set the `@mapping` slot: declares which child-level spat_units
+#' and feat_types federate up to gmulti-level handles, with per-child name
+#' reconciliation.
+#'
+#' Auto-discovered at construction via the symmetric trivial mapping
+#' (gmulti-level handle == child-level name across all participating
+#' samples). The setter accepts an edited mapping (e.g. to declare that
+#' B191's `"transcripts"` and B215's `"rna"` are the same modality) and
+#' invalidates joint slot state per affected (spat_unit, feat_type)
+#' universe.
+#'
+#' Assignment of `NULL` triggers fresh auto-discovery from the current
+#' child population — useful after adding children with new
+#' spat_units / feat_types not present in the previous mapping.
+#'
+#' @param x a `giottoMulti`
+#' @param which one of `"spat_unit"` or `"feat_type"` to narrow the return;
+#'   default returns the full mapping list
+#' @param value a `list` with `spat_unit` / `feat_type` entries, or `NULL`
+#'   to trigger fresh auto-discovery
+#' @returns the requested mapping (full list or one axis)
+#' @export
+setGeneric("gmultiMapping",
+    function(x, ...) standardGeneric("gmultiMapping"))
+
+#' @rdname gmultiMapping
+#' @export
+setMethod("gmultiMapping", "giottoMulti",
+    function(x, which = NULL, ...) {
+        if (is.null(which)) return(x@mapping)
+        which <- match.arg(which, c("spat_unit", "feat_type"))
+        x@mapping[[which]]
+    }
+)
+
+#' @rdname gmultiMapping
+#' @export
+setGeneric("gmultiMapping<-",
+    function(x, ..., value) standardGeneric("gmultiMapping<-"))
+
+#' @rdname gmultiMapping
+#' @export
+setMethod("gmultiMapping<-", "giottoMulti",
+    function(x, ..., value) {
+        if (is.null(value)) {
+            x@mapping <- .gm_discover_mapping(x@objects)
+            return(.gm_invalidate_joint_for_mapping_change(x, old = NULL))
+        }
+        new_mapping <- .gm_validate_mapping(value, x@objects)
+        old_mapping <- x@mapping
+        x@mapping <- new_mapping
+        .gm_invalidate_joint_for_mapping_change(x, old = old_mapping)
+    }
+)
+
+# Validate a candidate @mapping against the current child population.
+# - Must be a list with `spat_unit` and `feat_type` named entries (each a
+#   list of named char vectors).
+# - Per-sample names must exist in @objects.
+# - Per-sample child slot names must exist on the named child for the
+#   relevant axis (cell_ID for spat_unit, feat_ID for feat_type).
+# Errors clearly on invalid input rather than silently passing through.
+#' @noRd
+.gm_validate_mapping <- function(value, objects) {
+    checkmate::assert_list(value, names = "unique",
+        .var.name = "mapping")
+    if (!all(c("spat_unit", "feat_type") %in% names(value))) {
+        stop("[gmultiMapping<-] value must have `spat_unit` and `feat_type` ",
+            "named entries (each a list of per-sample char vectors)",
+            call. = FALSE)
+    }
+    sample_names <- names(objects)
+    validate_axis <- function(axis_list, axis, child_slot) {
+        checkmate::assert_list(axis_list, .var.name = sprintf("mapping$%s", axis))
+        for (handle in names(axis_list)) {
+            entry <- axis_list[[handle]]
+            checkmate::assert_character(entry, names = "unique",
+                .var.name = sprintf("mapping$%s$%s", axis, handle))
+            bad_s <- setdiff(names(entry), sample_names)
+            if (length(bad_s) > 0L) {
+                stop(sprintf(
+                    "[gmultiMapping<-] %s[[%s]] references unknown sample(s): %s",
+                    axis, handle, paste(bad_s, collapse = ", ")),
+                    call. = FALSE)
+            }
+            for (s in names(entry)) {
+                child_keys <- tryCatch(
+                    names(slot(objects[[s]], child_slot)),
+                    error = function(e) character()
+                )
+                if (!entry[[s]] %in% child_keys) {
+                    stop(sprintf(
+                        "[gmultiMapping<-] %s[[%s]][[%s]] = '%s' not present in child's @%s (have: %s)",
+                        axis, handle, s, entry[[s]], child_slot,
+                        paste(child_keys, collapse = ", ")),
+                        call. = FALSE)
+                }
+            }
+        }
+    }
+    validate_axis(value$spat_unit, "spat_unit", "cell_ID")
+    validate_axis(value$feat_type, "feat_type", "feat_ID")
+    value
+}
+
+# Invalidate joint-slot state for any (spat_unit, feat_type) universe whose
+# mapping changed. Conservative v1: when `old` is NULL (NULL-assigned reset),
+# drop all joint state; when `old` is provided, drop only the universes
+# where the per-sample char vector changed.
+#
+# Joint slots affected: @expression, @cell_metadata, @dimension_reduction,
+# @nn_network, @spatial_enrichment — all keyed by (spat_unit, feat_type)
+# at their top level.
+#' @noRd
+.gm_invalidate_joint_for_mapping_change <- function(x, old = NULL) {
+    if (is.null(old)) {
+        # full reset
+        x@expression <- NULL
+        x@cell_metadata <- NULL
+        x@feat_metadata <- NULL
+        x@dimension_reduction <- NULL
+        x@nn_network <- NULL
+        x@spatial_enrichment <- NULL
+        return(x)
+    }
+    new <- x@mapping
+    su_changed <- .gm_axis_changed_keys(old$spat_unit, new$spat_unit)
+    ft_changed <- .gm_axis_changed_keys(old$feat_type, new$feat_type)
+
+    drop_su <- function(slot_list) {
+        if (is.null(slot_list)) return(NULL)
+        slot_list[!names(slot_list) %in% su_changed]
+    }
+    drop_ft_under_su <- function(slot_list) {
+        if (is.null(slot_list)) return(NULL)
+        lapply(slot_list, function(by_su) {
+            if (!is.list(by_su)) return(by_su)
+            by_su[!names(by_su) %in% ft_changed]
+        })
+    }
+    # cell_metadata / spatial_enrichment are spat_unit-only at top level
+    x@cell_metadata <- drop_su(x@cell_metadata)
+    x@spatial_enrichment <- drop_su(x@spatial_enrichment)
+    # expression / dimension_reduction / nn_network are spat_unit -> feat_type
+    x@expression <- drop_su(drop_ft_under_su(x@expression))
+    x@dimension_reduction <- drop_su(drop_ft_under_su(x@dimension_reduction))
+    x@nn_network <- drop_su(drop_ft_under_su(x@nn_network))
+    # feat_metadata is feat_type-keyed only
+    if (length(ft_changed) > 0L && !is.null(x@feat_metadata)) {
+        x@feat_metadata <- x@feat_metadata[
+            !names(x@feat_metadata) %in% ft_changed
+        ]
+    }
+    x
+}
+
+# Return the set of top-level keys whose per-sample vector differs (or
+# entries that were added or removed).
+#' @noRd
+.gm_axis_changed_keys <- function(old_axis, new_axis) {
+    old_axis <- old_axis %||% list()
+    new_axis <- new_axis %||% list()
+    keys <- union(names(old_axis), names(new_axis))
+    changed <- vapply(keys, function(k) {
+        !identical(old_axis[[k]], new_axis[[k]])
+    }, logical(1L))
+    keys[changed]
+}
 
 
 # spatIDs / featIDs — return GLOBAL ids from id_map ####

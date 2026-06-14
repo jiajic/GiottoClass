@@ -963,3 +963,97 @@ test_that("saveGiotto + loadGiotto round-trip preserves a federated giottoMulti"
     expect_identical(spatIDs(mg2),
         c(paste0("a::a_c", 1:5), paste0("b::b_c", 1:3)))
 })
+
+
+# @mapping slot — federation declaration ####
+
+test_that("empty giottoMulti has empty @mapping", {
+    mg <- new("giottoMulti")
+    m <- gmultiMapping(mg)
+    expect_type(m, "list")
+    expect_named(m, c("spat_unit", "feat_type"), ignore.order = TRUE)
+    expect_length(m$spat_unit, 0L)
+    expect_length(m$feat_type, 0L)
+})
+
+test_that("populated giottoMulti auto-discovers symmetric trivial mapping", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    m <- gmultiMapping(mg)
+    expect_identical(names(m$spat_unit), "cell")
+    expect_identical(m$spat_unit$cell, c(a = "cell", b = "cell"))
+    expect_identical(names(m$feat_type), "rna")
+    expect_identical(m$feat_type$rna, c(a = "rna", b = "rna"))
+})
+
+test_that("gmultiMapping(which = ) returns just one axis", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    expect_identical(gmultiMapping(mg, "spat_unit"),
+        list(cell = c(a = "cell")))
+    expect_identical(gmultiMapping(mg, "feat_type"),
+        list(rna = c(a = "rna")))
+})
+
+test_that("gmultiMapping<- accepts an edited mapping", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+
+    m <- gmultiMapping(mg)
+    m$feat_type$rna <- c(a = "rna", b = "rna")  # no-op edit
+    gmultiMapping(mg) <- m
+    expect_identical(gmultiMapping(mg, "feat_type")$rna,
+        c(a = "rna", b = "rna"))
+})
+
+test_that("gmultiMapping<- NULL triggers fresh auto-discovery", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    m1 <- gmultiMapping(mg)
+    gmultiMapping(mg) <- NULL
+    m2 <- gmultiMapping(mg)
+    expect_identical(m1, m2)
+})
+
+test_that("gmultiMapping<- rejects unknown sample names", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    m <- gmultiMapping(mg)
+    m$spat_unit$cell <- c(a = "cell", NOPE = "cell")
+    expect_error(gmultiMapping(mg) <- m, "unknown sample")
+})
+
+test_that("gmultiMapping<- rejects child slot names that don't exist", {
+    g1 <- .mk_minimal(5, 4)
+    mg <- createGiottoMulti(list(a = g1))
+    m <- gmultiMapping(mg)
+    m$spat_unit$cell <- c(a = "definitely_not_a_spat_unit")
+    expect_error(gmultiMapping(mg) <- m, "not present in child")
+})
+
+test_that("gmultiMapping<- invalidates joint state for changed universes", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    # Stub joint expression slot for the rna universe
+    mg@expression <- list(cell = list(rna = list(raw = "stub_matrix")))
+
+    # Change the rna mapping — drops b from federation. Should invalidate
+    # joint expression for the rna universe.
+    m <- gmultiMapping(mg)
+    m$feat_type$rna <- c(a = "rna")
+    gmultiMapping(mg) <- m
+    expect_null(mg@expression$cell$rna)
+})
+
+test_that("show method displays @mapping summary", {
+    g1 <- .mk_minimal(5, 4)
+    g2 <- .mk_minimal(3, 4)
+    mg <- createGiottoMulti(list(a = g1, b = g2))
+    out <- capture.output(show(mg))
+    expect_true(any(grepl("spat_unit: cell \\(2\\)", out)))
+    expect_true(any(grepl("feat_type: rna \\(2\\)", out)))
+})

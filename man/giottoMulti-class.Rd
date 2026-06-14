@@ -21,6 +21,20 @@ shared across all cells.
 \item{\code{id_map}}{\code{list} with elements \code{cells} and \code{feats}, each a \code{data.table}
 mapping \verb{(object, local_id) → global_id}}
 
+\item{\code{mapping}}{\code{list} declaring how child-level spat_units and feat_types
+federate up to gmulti-level handles. Two named entries:
+\itemize{
+\item \code{spat_unit} — list of named character vectors. Top-level names are
+gmulti-level spat_unit handles; each vector maps \verb{sample → child-level spat_unit name} (handles per-child name variation; partial coverage
+is fine).
+\item \code{feat_type} — same shape, for feature types.
+}
+
+Auto-discovered at construction via the symmetric trivial mapping
+(gmulti-level handle == child-level name); customisable post-init
+via \link{gmultiMapping<-}. See \code{vignettes/DESIGN_gmulti_federation.md}
+for the full design.}
+
 \item{\code{expression}}{shared expression matrices (rows = union of features,
 cols = global cell IDs)}
 
