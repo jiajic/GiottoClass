@@ -26,7 +26,7 @@ getCellMetadata(gobject, ...)
   output = c("cellMetaObj", "data.table"),
   copy_obj = TRUE,
   set_defaults = TRUE,
-  sample = NULL
+  samples = NULL
 )
 }
 \arguments{

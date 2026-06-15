@@ -26,7 +26,7 @@ getFeatureMetadata(gobject, ...)
   output = c("featMetaObj", "data.table"),
   copy_obj = TRUE,
   set_defaults = TRUE,
-  sample = NULL
+  samples = NULL
 )
 }
 \arguments{

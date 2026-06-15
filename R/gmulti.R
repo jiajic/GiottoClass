@@ -1110,41 +1110,50 @@ setMethod("show", "giottoMulti", function(object) {
     list(sample = sample, name = rest)
 }
 
-# Slice a federated joint subobject to a single sample. The joint
+# Slice a federated joint subobject to one or more samples. The joint
 # subobject's cell-axis IDs follow the `sample::cell_id` convention
-# (assembled in .gm_assemble_*); slicing matches the prefix and strips
-# it (no — keep prefixed for now to preserve global addressability).
+# (assembled in .gm_assemble_*); slicing matches any of the sample
+# prefixes (OR semantics across the vector). Cell ID prefixes are
+# preserved on output for global addressability.
 #
 # Per-subobject-class branching mirrors `.gm_apply_view` (which already
 # filters by cell or feat axis); this is the per-sample analogue.
 #
-# When `sample` is NULL, returns the input unchanged.
+# When `samples` is NULL, returns the input unchanged.
 #
 # @param x a joint subobject (cellMetaObj, featMetaObj, exprObj, dimObj)
-# @param sample character(1) sample name or NULL
-# @param gobject the giottoMulti (used to validate the sample exists)
-# @returns the subobject narrowed to `sample`'s contributions
+# @param samples character vector of sample names, or NULL
+# @param gobject the giottoMulti (used to validate the samples exist)
+# @returns the subobject narrowed to those samples' contributions
 #' @noRd
-.gm_slice_to_sample <- function(x, sample, gobject) {
-    if (is.null(sample)) return(x)
-    checkmate::assert_string(sample)
-    if (!sample %in% names(gobject@objects)) {
-        stop(sprintf("[gmulti getter] sample '%s' not in @objects (have: %s)",
-            sample, paste(names(gobject@objects), collapse = ", ")),
+.gm_slice_to_samples <- function(x, samples, gobject) {
+    if (is.null(samples)) return(x)
+    checkmate::assert_character(samples, min.len = 1L, any.missing = FALSE)
+    bad <- setdiff(samples, names(gobject@objects))
+    if (length(bad) > 0L) {
+        stop(sprintf(
+            "[gmulti getter] sample(s) '%s' not in @objects (have: %s)",
+            paste(bad, collapse = ", "),
+            paste(names(gobject@objects), collapse = ", ")),
             call. = FALSE)
     }
-    prefix <- paste0(sample, "::")
+    prefixes <- paste0(samples, "::")
+    starts_any <- function(ids) {
+        # OR across prefixes: TRUE for ids that start with any of them.
+        out <- rep(FALSE, length(ids))
+        for (p in prefixes) out <- out | startsWith(ids, p)
+        out
+    }
 
     if (inherits(x, "exprObj")) {
-        cn <- colnames(x[])
-        keep <- startsWith(cn, prefix)
+        keep <- starts_any(colnames(x[]))
         x[] <- x[][, keep, drop = FALSE]
         return(x)
     }
     if (inherits(x, "cellMetaObj") || inherits(x, "spatEnrObj")) {
         cell_ID <- NULL  # data.table NSE
         dt <- x[]
-        x[] <- dt[startsWith(cell_ID, prefix)]
+        x[] <- dt[starts_any(cell_ID)]
         return(x)
     }
     if (inherits(x, "featMetaObj")) {
@@ -1154,14 +1163,14 @@ setMethod("show", "giottoMulti", function(object) {
     }
     if (inherits(x, "dimObj")) {
         coords <- x@coordinates
-        keep <- startsWith(rownames(coords), prefix)
+        keep <- starts_any(rownames(coords))
         x@coordinates <- coords[keep, , drop = FALSE]
         return(x)
     }
     if (inherits(x, "nnNetObj")) {
         g <- x@igraph
         vnames <- names(igraph::V(g))
-        keep <- startsWith(vnames, prefix)
+        keep <- starts_any(vnames)
         x@igraph <- igraph::induced_subgraph(g, igraph::V(g)[keep])
         return(x)
     }
@@ -1518,21 +1527,25 @@ setMethod(
 setMethod("getExpression", "giottoMulti",
     function(gobject, values = NULL, spat_unit = NULL, feat_type = NULL,
              output = c("exprObj", "matrix"), set_defaults = TRUE,
-             sample = NULL) {
+             samples = NULL) {
         output <- match.arg(output, choices = c("exprObj", "matrix"))
 
-        # Parse "sample::name" prefix in values. Explicit `sample =` arg
-        # wins over the parsed prefix if both are present (caller intent
-        # is unambiguous either way; flag only on conflict).
+        # Parse "sample::name" prefix in values. Resolves to a single
+        # sample; conflicts with `samples = ` arg if both are set and
+        # disagree.
         if (!is.null(values) && length(values) == 1L) {
             parsed <- .parse_sample_qualified_name(values)
             if (!is.null(parsed$sample)) {
-                if (!is.null(sample) && !identical(sample, parsed$sample)) {
-                    stop(sprintf(
-                        "[getExpression] conflicting sample: `sample = '%s'` vs values prefix '%s::'",
-                        sample, parsed$sample), call. = FALSE)
+                if (!is.null(samples) &&
+                    !identical(samples, parsed$sample)) {
+                    stop(sprintf(paste(
+                        "[getExpression] conflicting sample selection:",
+                        "`samples = %s` vs values prefix '%s::'",
+                        sep = " "),
+                        paste(sprintf("'%s'", samples), collapse = ","),
+                        parsed$sample), call. = FALSE)
                 }
-                sample <- parsed$sample
+                samples <- parsed$sample
                 values <- parsed$name
             }
         }
@@ -1560,7 +1573,7 @@ setMethod("getExpression", "giottoMulti",
             e <- callNextMethod(gobject, values = target_values,
                 spat_unit = spat_unit, feat_type = feat_type,
                 output = "exprObj", set_defaults = FALSE)
-            e <- .gm_slice_to_sample(e, sample, gobject)
+            e <- .gm_slice_to_samples(e, samples, gobject)
             if (output == "matrix") return(e[])
             return(e)
         }
@@ -1575,7 +1588,7 @@ setMethod("getExpression", "giottoMulti",
             feat_type = if (nospec_feat) NULL else feat_type,
             values = values)
         e <- .gm_apply_view(e, gobject)
-        e <- .gm_slice_to_sample(e, sample, gobject)
+        e <- .gm_slice_to_samples(e, samples, gobject)
         if (output == "matrix") return(e[])
         e
     }
@@ -1589,7 +1602,7 @@ setMethod("getCellMetadata", "giottoMulti", function(gobject,
     output = c("cellMetaObj", "data.table"),
     copy_obj = TRUE,
     set_defaults = TRUE,
-    sample = NULL) {
+    samples = NULL) {
     output <- match.arg(output, choices = c("cellMetaObj", "data.table"))
     nospec_unit <- is.null(spat_unit)
     nospec_feat <- is.null(feat_type)
@@ -1604,7 +1617,7 @@ setMethod("getCellMetadata", "giottoMulti", function(gobject,
         cm <- callNextMethod(gobject,
             spat_unit = spat_unit, feat_type = feat_type,
             output = "cellMetaObj", copy_obj = copy_obj, set_defaults = FALSE)
-        cm <- .gm_slice_to_sample(cm, sample, gobject)
+        cm <- .gm_slice_to_samples(cm, samples, gobject)
         if (output == "data.table") return(cm[])
         return(cm)
     }
@@ -1616,7 +1629,7 @@ setMethod("getCellMetadata", "giottoMulti", function(gobject,
         spat_unit = if (nospec_unit) NULL else spat_unit,
         feat_type = if (nospec_feat) NULL else feat_type)
     cm <- .gm_apply_view(cm, gobject)
-    cm <- .gm_slice_to_sample(cm, sample, gobject)
+    cm <- .gm_slice_to_samples(cm, samples, gobject)
     if (output == "data.table") return(cm[])
     cm
 })
@@ -1629,7 +1642,7 @@ setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
     output = c("featMetaObj", "data.table"),
     copy_obj = TRUE,
     set_defaults = TRUE,
-    sample = NULL) {
+    samples = NULL) {
     output <- match.arg(output, choices = c("featMetaObj", "data.table"))
     nospec_unit <- is.null(spat_unit)
     nospec_feat <- is.null(feat_type)
@@ -1638,11 +1651,18 @@ setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
     }
 
     # Joint slot populated? Slot is authoritative; defer to gAny.
-    # Feature IDs aren't sample-namespaced (passthrough) — `sample = ` is
+    # Feature IDs aren't sample-namespaced (passthrough) — `samples = ` is
     # accepted for API symmetry but is a no-op at the featmeta level. It
     # validates against @objects so a typo still errors loudly.
-    if (!is.null(sample)) {
-        checkmate::assert_choice(sample, names(gobject@objects))
+    if (!is.null(samples)) {
+        checkmate::assert_character(samples,
+            min.len = 1L, any.missing = FALSE)
+        bad <- setdiff(samples, names(gobject@objects))
+        if (length(bad) > 0L) {
+            stop(sprintf(
+                "[getFeatureMetadata] sample(s) '%s' not in @objects",
+                paste(bad, collapse = ", ")), call. = FALSE)
+        }
     }
     joint <- gobject@feat_metadata[[spat_unit]][[feat_type]]
     if (inherits(joint, "featMetaObj")) {
@@ -1673,19 +1693,19 @@ setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
 # is almost never what the caller means; require an explicit target.
 
 # Resolve the per-child target arg accepting either the legacy `object`
-# name or the canonical `sample` (preferred). Conflicting values error.
+# name or the canonical `samples` (preferred). Conflicting values error.
 #
 # Used by spatial-domain getters that select one or more children.
 #' @noRd
-.gm_resolve_per_child_arg <- function(gobject, object, sample) {
-    if (!is.null(object) && !is.null(sample)) {
-        if (!identical(unname(object), unname(sample))) {
-            stop("[gmulti getter] conflicting `object = ` and `sample = ` ",
-                "arguments; pass one or the other (sample is preferred).",
+.gm_resolve_per_child_arg <- function(gobject, object, samples) {
+    if (!is.null(object) && !is.null(samples)) {
+        if (!identical(unname(object), unname(samples))) {
+            stop("[gmulti getter] conflicting `object = ` and `samples = ` ",
+                "arguments; pass one or the other (samples is preferred).",
                 call. = FALSE)
         }
     }
-    if (!is.null(sample)) object <- sample
+    if (!is.null(samples)) object <- samples
     .gm_resolve_objects(gobject, object)
 }
 
@@ -1704,8 +1724,8 @@ setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
 #' @rdname getSpatialLocations
 #' @export
 setMethod("getSpatialLocations", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., sample = NULL) {
-        objs <- .gm_resolve_per_child_arg(gobject, object, sample)
+    function(gobject, object = NULL, ..., samples = NULL) {
+        objs <- .gm_resolve_per_child_arg(gobject, object, samples)
         out <- lapply(objs, function(nm) {
             getSpatialLocations(gobject@objects[[nm]], ...)
         })
@@ -1728,8 +1748,8 @@ setMethod("setSpatialLocations", signature("giottoMulti"),
 #' @rdname getSpatialNetwork
 #' @export
 setMethod("getSpatialNetwork", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., sample = NULL) {
-        objs <- .gm_resolve_per_child_arg(gobject, object, sample)
+    function(gobject, object = NULL, ..., samples = NULL) {
+        objs <- .gm_resolve_per_child_arg(gobject, object, samples)
         out <- lapply(objs, function(nm) {
             getSpatialNetwork(gobject@objects[[nm]], ...)
         })
@@ -1752,8 +1772,8 @@ setMethod("setSpatialNetwork", signature("giottoMulti"),
 #' @rdname getPolygonInfo
 #' @export
 setMethod("getPolygonInfo", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., sample = NULL) {
-        objs <- .gm_resolve_per_child_arg(gobject, object, sample)
+    function(gobject, object = NULL, ..., samples = NULL) {
+        objs <- .gm_resolve_per_child_arg(gobject, object, samples)
         out <- lapply(objs, function(nm) {
             getPolygonInfo(gobject@objects[[nm]], ...)
         })
@@ -1776,8 +1796,8 @@ setMethod("setPolygonInfo", signature("giottoMulti"),
 #' @rdname getFeatureInfo
 #' @export
 setMethod("getFeatureInfo", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., sample = NULL) {
-        objs <- .gm_resolve_per_child_arg(gobject, object, sample)
+    function(gobject, object = NULL, ..., samples = NULL) {
+        objs <- .gm_resolve_per_child_arg(gobject, object, samples)
         out <- lapply(objs, function(nm) {
             getFeatureInfo(gobject@objects[[nm]], ...)
         })
@@ -1800,8 +1820,8 @@ setMethod("setFeatureInfo", signature("giottoMulti"),
 #' @rdname getGiottoImage
 #' @export
 setMethod("getGiottoImage", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., sample = NULL) {
-        objs <- .gm_resolve_per_child_arg(gobject, object, sample)
+    function(gobject, object = NULL, ..., samples = NULL) {
+        objs <- .gm_resolve_per_child_arg(gobject, object, samples)
         out <- lapply(objs, function(nm) {
             getGiottoImage(gobject@objects[[nm]], ...)
         })

@@ -19,7 +19,7 @@ getPolygonInfo(gobject, ...)
   space = NULL
 )
 
-\S4method{getPolygonInfo}{giottoMulti}(gobject, object = NULL, ..., sample = NULL)
+\S4method{getPolygonInfo}{giottoMulti}(gobject, object = NULL, ..., samples = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

@@ -16,7 +16,7 @@ getGiottoImage(gobject, ...)
   space = NULL
 )
 
-\S4method{getGiottoImage}{giottoMulti}(gobject, object = NULL, ..., sample = NULL)
+\S4method{getGiottoImage}{giottoMulti}(gobject, object = NULL, ..., samples = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

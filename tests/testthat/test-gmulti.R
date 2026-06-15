@@ -1299,35 +1299,35 @@ test_that(".parse_sample_qualified_name handles bare names + prefixed names", {
         list(sample = "", name = "raw"))
 })
 
-test_that("getCellMetadata(sample = ) slices joint cmeta to one sample", {
+test_that("getCellMetadata(samples = ) slices joint cmeta to one sample", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
 
     cm_full <- getCellMetadata(mg, output = "data.table")
-    cm_a <- getCellMetadata(mg, sample = "a", output = "data.table")
+    cm_a <- getCellMetadata(mg, samples = "a", output = "data.table")
 
     expect_identical(nrow(cm_full), 8L)
     expect_identical(nrow(cm_a), 5L)
     expect_true(all(startsWith(cm_a$cell_ID, "a::")))
 })
 
-test_that("getCellMetadata(sample = ) errors on unknown sample", {
+test_that("getCellMetadata(samples = ) errors on unknown sample", {
     g1 <- .mk_minimal(5, 4)
     mg <- createGiottoMulti(list(a = g1))
     expect_error(
-        getCellMetadata(mg, sample = "NONEXISTENT", output = "data.table"),
+        getCellMetadata(mg, samples = "NONEXISTENT", output = "data.table"),
         "not in @objects"
     )
 })
 
-test_that("getExpression(sample = ) slices joint matrix columns", {
+test_that("getExpression(samples = ) slices joint matrix columns", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
 
     mat_full <- getExpression(mg, output = "matrix")
-    mat_b <- getExpression(mg, sample = "b", output = "matrix")
+    mat_b <- getExpression(mg, samples = "b", output = "matrix")
 
     expect_identical(ncol(mat_full), 8L)
     expect_identical(ncol(mat_b), 3L)
@@ -1350,7 +1350,7 @@ test_that("getExpression conflicting sample= + values prefix errors", {
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
     expect_error(
-        getExpression(mg, values = "a::raw", sample = "b", output = "matrix"),
+        getExpression(mg, values = "a::raw", samples = "b", output = "matrix"),
         "conflicting sample"
     )
 })
@@ -1359,16 +1359,16 @@ test_that("getExpression matching sample= + values prefix is fine", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
-    mat <- getExpression(mg, values = "a::raw", sample = "a", output = "matrix")
+    mat <- getExpression(mg, values = "a::raw", samples = "a", output = "matrix")
     expect_identical(ncol(mat), 5L)
 })
 
-test_that("getSpatialLocations(sample = ) is an alias for object =", {
+test_that("getSpatialLocations(samples = ) is an alias for object =", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
     # Both should return a length-1 list keyed to the requested sample
-    via_sample <- getSpatialLocations(mg, sample = "a")
+    via_sample <- getSpatialLocations(mg, samples = "a")
     via_object <- getSpatialLocations(mg, object = "a")
     expect_identical(names(via_sample), "a")
     expect_identical(names(via_object), "a")
@@ -1379,27 +1379,27 @@ test_that("getSpatialLocations errors on conflicting sample= + object=", {
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
     expect_error(
-        getSpatialLocations(mg, object = "a", sample = "b"),
+        getSpatialLocations(mg, object = "a", samples = "b"),
         "conflicting"
     )
 })
 
-test_that("getFeatureMetadata(sample = ) accepts valid sample (no-op on output)", {
+test_that("getFeatureMetadata(samples = ) accepts valid sample (no-op on output)", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
     # Feature IDs are passthrough — sample arg accepted for symmetry, but
     # validates only.
-    fm <- getFeatureMetadata(mg, sample = "a", output = "data.table")
+    fm <- getFeatureMetadata(mg, samples = "a", output = "data.table")
     expect_s3_class(fm, "data.table")
 })
 
-test_that("getFeatureMetadata(sample = ) errors on invalid sample", {
+test_that("getFeatureMetadata(samples = ) errors on invalid sample", {
     g1 <- .mk_minimal(5, 4)
     mg <- createGiottoMulti(list(a = g1))
     expect_error(
-        getFeatureMetadata(mg, sample = "NOPE"),
-        "Must be element of"
+        getFeatureMetadata(mg, samples = "NOPE"),
+        "not in @objects"
     )
 })
 

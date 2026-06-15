@@ -27,7 +27,7 @@ getExpression(gobject, ...)
   feat_type = NULL,
   output = c("exprObj", "matrix"),
   set_defaults = TRUE,
-  sample = NULL
+  samples = NULL
 )
 }
 \arguments{
