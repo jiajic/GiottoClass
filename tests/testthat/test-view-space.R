@@ -102,8 +102,8 @@ test_that("materialize with polygon crop narrows by region", {
     expected <- sum(sl$sdimx >= 4000 & sl$sdimx <= 5500 &
                     sl$sdimy >= -5000 & sl$sdimy <= -3500)
 
-    v <- giottoView() |> crop(poly)
-    g2 <- materialize(g, v)
+    giottoView(g, "poly_crop") <- giottoView() |> crop(poly)
+    g2 <- materialize(g, "poly_crop")
     expect_equal(nrow(pDataDT(g2)), expected)
 })
 
@@ -314,7 +314,8 @@ test_that("defaultViewCoordinator() S4 dispatch is registrable from downstream",
 
 test_that("materialize() with empty view returns equivalent gobject", {
     g <- .fixture_giotto()
-    g2 <- materialize(g, giottoView())
+    giottoView(g, "empty") <- giottoView()
+    g2 <- materialize(g, "empty")
     expect_equal(nrow(pDataDT(g2)), nrow(pDataDT(g)))
     expect_equal(
         nrow(getSpatialLocations(g2, output = "data.table")),
@@ -327,8 +328,8 @@ test_that("materialize() narrows tabular slots by subset predicate", {
     n_total <- length(spatIDs(g))
     n_target <- sum(pDataDT(g)$leiden_clus == "1")
 
-    v <- giottoView() |> subset(leiden_clus == "1")
-    g2 <- materialize(g, v)
+    giottoView(g, "c1") <- giottoView() |> subset(leiden_clus == "1")
+    g2 <- materialize(g, "c1")
 
     expect_lt(nrow(pDataDT(g2)), n_total)
     expect_equal(nrow(pDataDT(g2)), n_target)
@@ -337,8 +338,8 @@ test_that("materialize() narrows tabular slots by subset predicate", {
 
 test_that("materialize() narrows spatial slots via cell_ID cascade", {
     g <- .fixture_giotto()
-    v <- giottoView() |> subset(leiden_clus == "1")
-    g2 <- materialize(g, v)
+    giottoView(g, "c1") <- giottoView() |> subset(leiden_clus == "1")
+    g2 <- materialize(g, "c1")
 
     n_filter <- nrow(pDataDT(g2))
     expect_equal(
@@ -351,8 +352,8 @@ test_that("materialize() narrows spatial slots via cell_ID cascade", {
 test_that("materialize() with %in% and env-resident value works (NSE)", {
     g <- .fixture_giotto()
     targets <- c("1", "2")
-    v <- giottoView() |> subset(leiden_clus %in% targets)
-    g2 <- materialize(g, v)
+    giottoView(g, "c12") <- giottoView() |> subset(leiden_clus %in% targets)
+    g2 <- materialize(g, "c12")
     expected <- sum(pDataDT(g)$leiden_clus %in% targets)
     expect_equal(nrow(pDataDT(g2)), expected)
 })
@@ -365,8 +366,8 @@ test_that("materialize() with expression-column predicate routes via spatValues"
         sprintf("gene %s not in panel", gene))
 
     expected <- sum(getExpression(g, output = "matrix")[gene, ] > 0)
-    v <- giottoView() |> subset(Gfap > 0)
-    g2 <- materialize(g, v)
+    giottoView(g, "gfap_pos") <- giottoView() |> subset(Gfap > 0)
+    g2 <- materialize(g, "gfap_pos")
     expect_equal(nrow(pDataDT(g2)), expected)
 })
 
@@ -377,8 +378,8 @@ test_that("materialize() with crop narrows via spatLocs extent", {
     expected <- sum(sl$sdimx >= ext[1L] & sl$sdimx <= ext[2L] &
                     sl$sdimy >= ext[3L] & sl$sdimy <= ext[4L])
 
-    v <- giottoView() |> crop(ext)
-    g2 <- materialize(g, v)
+    giottoView(g, "ext_crop") <- giottoView() |> crop(ext)
+    g2 <- materialize(g, "ext_crop")
     expect_equal(nrow(pDataDT(g2)), expected)
     expect_equal(
         nrow(getSpatialLocations(g2, output = "data.table")), expected)
@@ -387,8 +388,9 @@ test_that("materialize() with crop narrows via spatLocs extent", {
 test_that("materialize() with space transforms spatial coords only", {
     g <- .fixture_giotto()
     giottoSpace(g, "tilted") <- giottoSpace() |> spin(30)
+    giottoView(g, "empty") <- giottoView()
 
-    g2 <- materialize(g, giottoView(), space = "tilted")
+    g2 <- materialize(g, "empty", space = "tilted")
     sl_native <- getSpatialLocations(g, output = "data.table")
     sl_tilted <- getSpatialLocations(g2, output = "data.table")
 
@@ -401,9 +403,9 @@ test_that("materialize() with space transforms spatial coords only", {
 test_that("materialize() with filter + space combines both", {
     g <- .fixture_giotto()
     giottoSpace(g, "tilted") <- giottoSpace() |> spin(30)
+    giottoView(g, "c12") <- giottoView() |> subset(leiden_clus %in% c("1", "2"))
 
-    v <- giottoView() |> subset(leiden_clus %in% c("1", "2"))
-    g2 <- materialize(g, v, space = "tilted")
+    g2 <- materialize(g, "c12", space = "tilted")
 
     expected <- sum(pDataDT(g)$leiden_clus %in% c("1", "2"))
     sl_tilted <- getSpatialLocations(g2, output = "data.table")
@@ -424,11 +426,13 @@ test_that("getCellMetadata respects view = name", {
     expect_equal(n_view, sum(pDataDT(g)$leiden_clus == "1"))
 })
 
-test_that("getCellMetadata accepts ad-hoc view object", {
+test_that("getCellMetadata rejects ad-hoc view objects (character-only contract)", {
     g <- .fixture_giotto()
     v <- giottoView() |> subset(leiden_clus == "2")
-    n <- nrow(getCellMetadata(g, view = v, output = "data.table"))
-    expect_equal(n, sum(pDataDT(g)$leiden_clus == "2"))
+    expect_error(
+        getCellMetadata(g, view = v, output = "data.table"),
+        "Must be of type 'string'"
+    )
 })
 
 test_that("getExpression view narrows columns", {
@@ -518,12 +522,13 @@ test_that("spatValues view = name narrows returned rows", {
     expect_true(all(sv$leiden_clus == "1"))
 })
 
-test_that("spatValues view = ad-hoc giottoView object works", {
+test_that("spatValues view = rejects ad-hoc giottoView (character-only contract)", {
     g <- .fixture_giotto()
     v <- giottoView() |> subset(leiden_clus %in% c("2", "3"))
-    sv <- spatValues(g, feats = "leiden_clus", view = v)
-    expect_equal(nrow(sv), sum(pDataDT(g)$leiden_clus %in% c("2", "3")))
-    expect_true(all(sv$leiden_clus %in% c("2", "3")))
+    expect_error(
+        spatValues(g, feats = "leiden_clus", view = v),
+        "Must be of type 'string'"
+    )
 })
 
 test_that("spatValues view = NULL is identity (matches raw)", {
@@ -533,10 +538,11 @@ test_that("spatValues view = NULL is identity (matches raw)", {
     expect_identical(raw, same)
 })
 
-test_that("spatValues empty view recipe returns same as raw", {
+test_that("spatValues empty view recipe (slotted) returns same as raw", {
     g <- .fixture_giotto()
+    giottoView(g, "empty") <- giottoView()
     raw <- spatValues(g, feats = "leiden_clus")
-    via_empty <- spatValues(g, feats = "leiden_clus", view = giottoView())
+    via_empty <- spatValues(g, feats = "leiden_clus", view = "empty")
     expect_equal(nrow(via_empty), nrow(raw))
 })
 
@@ -551,9 +557,9 @@ test_that("spatValues view = ... matches getCellMetadata view = ... narrowing", 
 
 test_that("spatValues view = ... is consistent with materialize -> spatValues raw", {
     g <- .fixture_giotto()
-    v <- giottoView() |> subset(leiden_clus == "1")
-    direct <- spatValues(g, feats = "leiden_clus", view = v)
-    g_m <- materialize(g, v)
+    giottoView(g, "c1") <- giottoView() |> subset(leiden_clus == "1")
+    direct <- spatValues(g, feats = "leiden_clus", view = "c1")
+    g_m <- materialize(g, "c1")
     via_materialize <- spatValues(g_m, feats = "leiden_clus")
     # direct narrowing should match the materialized-then-raw path
     expect_setequal(direct$cell_ID, via_materialize$cell_ID)
@@ -561,8 +567,9 @@ test_that("spatValues view = ... is consistent with materialize -> spatValues ra
 
 test_that("spatValues view that filters to zero cells returns empty data.table", {
     g <- .fixture_giotto()
-    v <- giottoView() |> subset(leiden_clus == "_nonexistent_cluster_")
-    sv <- spatValues(g, feats = "leiden_clus", view = v)
+    giottoView(g, "none") <- giottoView() |>
+        subset(leiden_clus == "_nonexistent_cluster_")
+    sv <- spatValues(g, feats = "leiden_clus", view = "none")
     expect_equal(nrow(sv), 0L)
     expect_true("cell_ID" %in% colnames(sv))
 })
@@ -570,10 +577,10 @@ test_that("spatValues view that filters to zero cells returns empty data.table",
 test_that("spatValues view = composed predicate AND-narrows correctly", {
     g <- .fixture_giotto()
     # two subset steps chained — both should apply (intersection semantics)
-    v <- giottoView() |>
+    giottoView(g, "composed") <- giottoView() |>
         subset(leiden_clus %in% c("1", "2")) |>
         subset(total_expr > median(total_expr))
-    sv <- spatValues(g, feats = "leiden_clus", view = v)
+    sv <- spatValues(g, feats = "leiden_clus", view = "composed")
     cm <- pDataDT(g)
     n_expected <- sum(
         cm$leiden_clus %in% c("1", "2") &
@@ -584,8 +591,8 @@ test_that("spatValues view = composed predicate AND-narrows correctly", {
 test_that("spatValues view = on giottoMulti narrows joint output", {
     mg <- .fixture_gmulti()
     sv_raw <- spatValues(mg, feats = "leiden_clus")
-    v <- giottoView() |> subset(leiden_clus == "1")
-    sv_v <- spatValues(mg, feats = "leiden_clus", view = v)
+    giottoView(mg, "c1") <- giottoView() |> subset(leiden_clus == "1")
+    sv_v <- spatValues(mg, feats = "leiden_clus", view = "c1")
     expect_lt(nrow(sv_v), nrow(sv_raw))
     expect_true(all(sv_v$leiden_clus == "1"))
     # global cell_ID format still present
@@ -664,15 +671,15 @@ test_that(".scope_space_to_sample returns NULL when no matching key", {
 
 test_that("materialize on giottoMulti narrows children via selectSamples", {
     mg <- .fixture_gmulti()
-    v <- giottoView() |> selectSamples("a")
-    out <- materialize(mg, v)
+    giottoView(mg, "only_a") <- giottoView() |> selectSamples("a")
+    out <- materialize(mg, "only_a")
     expect_identical(names(out@objects), "a")
 })
 
 test_that("materialize on giottoMulti applies view per-child", {
     mg <- .fixture_gmulti()
-    v <- giottoView() |> subset(leiden_clus == "1")
-    out <- materialize(mg, v)
+    giottoView(mg, "c1") <- giottoView() |> subset(leiden_clus == "1")
+    out <- materialize(mg, "c1")
     expect_named(out@objects, c("a", "b"))
     # each child has been narrowed
     n_a <- nrow(pDataDT(out@objects$a))
@@ -685,7 +692,8 @@ test_that("materialize on giottoMulti scopes space per-child", {
     mg <- .fixture_gmulti()
     s <- (giottoSpace("a") |> spin(30)) + (giottoSpace("b") |> spin(45))
     giottoSpace(mg, "atlas") <- s
-    out <- materialize(mg, giottoView(), space = "atlas")
+    giottoView(mg, "empty") <- giottoView()
+    out <- materialize(mg, "empty", space = "atlas")
 
     sl_a_native <- getSpatialLocations(mg@objects$a, output = "data.table")
     sl_b_native <- getSpatialLocations(mg@objects$b, output = "data.table")
@@ -723,11 +731,11 @@ test_that("spatValues on giottoMulti finds features in joint expression", {
 
 test_that("materialize on giottoMulti narrows joint shared slots", {
     mg <- .fixture_gmulti()
-    v <- giottoView() |> subset(leiden_clus == "1")
+    giottoView(mg, "c1") <- giottoView() |> subset(leiden_clus == "1")
     n_total <- nrow(pDataDT(mg))
     n_target <- sum(pDataDT(mg)$leiden_clus == "1")
 
-    out <- materialize(mg, v)
+    out <- materialize(mg, "c1")
 
     # joint cell_metadata narrowed
     expect_equal(nrow(pDataDT(out)), n_target)

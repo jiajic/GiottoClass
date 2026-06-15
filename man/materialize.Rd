@@ -2,20 +2,14 @@
 % Please edit documentation in R/methods-view.R, R/classes-federatedRead.R
 \name{materialize}
 \alias{materialize}
-\alias{materialize,giotto,giottoView-method}
 \alias{materialize,giotto,character-method}
-\alias{materialize,giottoMulti,giottoView-method}
 \alias{materialize,giottoMulti,character-method}
 \alias{materialize,federatedReadHandle,missing-method}
 \title{materialize a giottoView into a new gobject}
 \usage{
 materialize(gobject, view, ...)
 
-\S4method{materialize}{giotto,giottoView}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
-
 \S4method{materialize}{giotto,character}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
-
-\S4method{materialize}{giottoMulti,giottoView}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
 
 \S4method{materialize}{giottoMulti,character}(gobject, view, space = NULL, coordinator = NULL, slots = NULL, ...)
 

@@ -41,22 +41,22 @@ NULL
 #   - the modified giottoView object when `view` is a recipe (caller
 #     continues building before slotting later)
 .record_view_on_gobject <- function(gobject, view, step) {
-    if (is.character(view)) {
-        checkmate::assert_character(view, len = 1L, any.missing = FALSE)
-        existing <- if (view %in% giottoViews(gobject)) {
-            giottoView(gobject, view)
-        } else {
-            giottoView()
-        }
-        new_view <- .view_record_step(existing, step)
-        giottoView(gobject, view) <- new_view
-        return(gobject)
+    # view contract: character(1) name of a slotted view, or NULL.
+    # Inline giottoView objects were considered and rejected (see
+    # vignettes/DESIGN_gmulti_federation.md). If programmatic composition
+    # is needed, build the view, slot it under a name, then reference it:
+    #   v <- giottoView() |> subset(...) |> crop(...)
+    #   giottoView(g, "tmp") <- v
+    #   subset(g, ..., view = "tmp")
+    checkmate::assert_string(view, .var.name = "view")
+    existing <- if (view %in% giottoViews(gobject)) {
+        giottoView(gobject, view)
+    } else {
+        giottoView()
     }
-    if (inherits(view, "giottoView")) {
-        return(.view_record_step(view, step))
-    }
-    stop("`view` must be NULL (eager), a character name, ",
-        "or a giottoView object", call. = FALSE)
+    new_view <- .view_record_step(existing, step)
+    giottoView(gobject, view) <- new_view
+    gobject
 }
 
 # Substitute env-resident scalar / vector values into `pred` so the
@@ -385,39 +385,44 @@ setGeneric("materialize",
     intersect(.materialize_default_slots, slots)  # canonical order
 }
 
-#' @rdname materialize
-#' @export
-setMethod("materialize",
-    signature(gobject = "giotto", view = "giottoView"),
-    function(gobject, view, space = NULL, coordinator = NULL,
-             slots = NULL, ...) {
-        if (is.null(coordinator)) {
-            coordinator <- .default_view_coordinator(gobject)
-        }
-        # Normalise space to a giottoSpace (or NULL) once at the entry
-        # point so per-subobject resolution doesn't re-look-up by name
-        space_obj <- .resolve_view_space(gobject, view, space)
-        # Per-call cache shared across all slot walks within this
-        # materialize. surviving_cell_ids computed at most once per call.
-        cache <- .new_resolver_cache()
-
-        out <- gobject
-
-        # Walk the (possibly filtered) slot list in canonical order:
-        # tabular → spatial → images. Slot names not in `slots` are
-        # left untouched on the returned gobject.
-        for (slot_name in .materialize_slot_filter(slots)) {
-            out <- .materialize_walk(out, slot_name,
-                view, space_obj, coordinator, cache)
-        }
-
-        # Networks (spatial_network, nn_network) intentionally not walked:
-        # they're built from a particular cell state and don't carry
-        # spatial coords; view/space resolution would be misleading.
-
-        out
+# Internal implementation: materialize on a giotto with an already-resolved
+# giottoView object. Called from the public character-signature method
+# (after slot lookup) and from the giottoMulti per-child loop (where the
+# view object is already in hand). Not user-facing; the public API is
+# the character-signature method below.
+#' @keywords internal
+#' @noRd
+.materialize_giotto_resolved <- function(gobject, view,
+                                          space = NULL,
+                                          coordinator = NULL,
+                                          slots = NULL,
+                                          ...) {
+    if (is.null(coordinator)) {
+        coordinator <- .default_view_coordinator(gobject)
     }
-)
+    # Normalise space to a giottoSpace (or NULL) once at the entry
+    # point so per-subobject resolution doesn't re-look-up by name
+    space_obj <- .resolve_view_space(gobject, view, space)
+    # Per-call cache shared across all slot walks within this
+    # materialize. surviving_cell_ids computed at most once per call.
+    cache <- .new_resolver_cache()
+
+    out <- gobject
+
+    # Walk the (possibly filtered) slot list in canonical order:
+    # tabular → spatial → images. Slot names not in `slots` are
+    # left untouched on the returned gobject.
+    for (slot_name in .materialize_slot_filter(slots)) {
+        out <- .materialize_walk(out, slot_name,
+            view, space_obj, coordinator, cache)
+    }
+
+    # Networks (spatial_network, nn_network) intentionally not walked:
+    # they're built from a particular cell state and don't carry
+    # spatial coords; view/space resolution would be misleading.
+
+    out
+}
 
 #' @rdname materialize
 #' @export
@@ -426,7 +431,8 @@ setMethod("materialize",
     function(gobject, view, space = NULL, coordinator = NULL,
              slots = NULL, ...) {
         v <- giottoView(gobject, view)
-        materialize(gobject, v, space = space, coordinator = coordinator,
+        .materialize_giotto_resolved(gobject, v,
+            space = space, coordinator = coordinator,
             slots = slots, ...)
     }
 )
@@ -442,56 +448,61 @@ setMethod("materialize",
 #    so the joint-level predicates resolve against joint slots and the
 #    surviving global cell_IDs narrow each joint subobject.
 
-#' @rdname materialize
-#' @export
-setMethod("materialize",
-    signature(gobject = "giottoMulti", view = "giottoView"),
-    function(gobject, view, space = NULL, coordinator = NULL,
-             slots = NULL, ...) {
-        if (is.null(coordinator)) {
-            coordinator <- .default_view_coordinator(gobject)
-        }
-        space_obj <- .resolve_view_space(gobject, view, space)
-        cache <- .new_resolver_cache()
-
-        # Resolve selectSamples FIRST — narrow children before any
-        # per-child work touches storage.
-        selected <- .resolve_sample_select(gobject, view)
-        if (length(selected) == 1L && is.na(selected)) {
-            selected <- names(gobject@objects)
-        } else {
-            selected <- intersect(selected, names(gobject@objects))
-        }
-
-        out <- gobject
-        out@objects <- gobject@objects[selected]
-
-        # Per-surviving-child materialize with the child-scoped space.
-        # `slots` filter is forwarded so per-child narrowing matches the
-        # joint-level scope.
-        out@objects <- setNames(lapply(selected, function(samp) {
-            child <- out@objects[[samp]]
-            child_space <- .scope_space_to_sample(space_obj, samp)
-            materialize(child, view, space = child_space,
-                coordinator = coordinator, slots = slots, ...)
-        }), selected)
-
-        # Narrow joint shared slots. Joint-level walk respects the
-        # `slots` filter: only multi-level cell_metadata / expression /
-        # dim_reduction / spatial_enrichment / feat_metadata are
-        # legitimately joint, so we intersect with that subset.
-        joint_candidates <- c("cell_metadata", "expression",
-            "dimension_reduction", "spatial_enrichment", "feat_metadata")
-        joint_slots <- intersect(.materialize_slot_filter(slots),
-            joint_candidates)
-        for (slot_name in joint_slots) {
-            out <- .materialize_walk(out, slot_name,
-                view, space_obj, coordinator, cache)
-        }
-
-        out
+# Internal implementation: materialize on a giottoMulti with an
+# already-resolved giottoView object. Called from the public
+# character-signature method (after slot lookup). Not user-facing.
+#' @keywords internal
+#' @noRd
+.materialize_gmulti_resolved <- function(gobject, view,
+                                          space = NULL,
+                                          coordinator = NULL,
+                                          slots = NULL,
+                                          ...) {
+    if (is.null(coordinator)) {
+        coordinator <- .default_view_coordinator(gobject)
     }
-)
+    space_obj <- .resolve_view_space(gobject, view, space)
+    cache <- .new_resolver_cache()
+
+    # Resolve selectSamples FIRST — narrow children before any
+    # per-child work touches storage.
+    selected <- .resolve_sample_select(gobject, view)
+    if (length(selected) == 1L && is.na(selected)) {
+        selected <- names(gobject@objects)
+    } else {
+        selected <- intersect(selected, names(gobject@objects))
+    }
+
+    out <- gobject
+    out@objects <- gobject@objects[selected]
+
+    # Per-surviving-child materialize with the child-scoped space.
+    # `slots` filter is forwarded so per-child narrowing matches the
+    # joint-level scope. Uses the internal resolved-view helper directly
+    # — the public materialize() dispatch only accepts character views,
+    # but per-child iteration already holds the giottoView object.
+    out@objects <- setNames(lapply(selected, function(samp) {
+        child <- out@objects[[samp]]
+        child_space <- .scope_space_to_sample(space_obj, samp)
+        .materialize_giotto_resolved(child, view, space = child_space,
+            coordinator = coordinator, slots = slots, ...)
+    }), selected)
+
+    # Narrow joint shared slots. Joint-level walk respects the
+    # `slots` filter: only multi-level cell_metadata / expression /
+    # dim_reduction / spatial_enrichment / feat_metadata are
+    # legitimately joint, so we intersect with that subset.
+    joint_candidates <- c("cell_metadata", "expression",
+        "dimension_reduction", "spatial_enrichment", "feat_metadata")
+    joint_slots <- intersect(.materialize_slot_filter(slots),
+        joint_candidates)
+    for (slot_name in joint_slots) {
+        out <- .materialize_walk(out, slot_name,
+            view, space_obj, coordinator, cache)
+    }
+
+    out
+}
 
 #' @rdname materialize
 #' @export
@@ -500,7 +511,8 @@ setMethod("materialize",
     function(gobject, view, space = NULL, coordinator = NULL,
              slots = NULL, ...) {
         v <- giottoView(gobject, view)
-        materialize(gobject, v, space = space, coordinator = coordinator,
+        .materialize_gmulti_resolved(gobject, v,
+            space = space, coordinator = coordinator,
             slots = slots, ...)
     }
 )

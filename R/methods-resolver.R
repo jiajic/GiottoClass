@@ -301,7 +301,16 @@ setMethod("defaultViewCoordinator", signature(source = "ANY"),
 .apply_view_space <- function(subobj, gobject, view = NULL, space = NULL,
                               coordinator = NULL) {
     if (is.null(view) && is.null(space)) return(subobj)
-    v <- if (is.character(view)) giottoView(gobject, view) else view
+    # view contract: character(1) name of a slotted view, or NULL.
+    # Inline giottoView objects were considered and rejected — views
+    # are curated artifacts; build + slot via giottoView<-(g, name) <- v
+    # if programmatic composition is needed. See vignettes/
+    # DESIGN_gmulti_federation.md for the reasoning.
+    if (!is.null(view)) {
+        checkmate::assert_string(view,
+            .var.name = "view")
+    }
+    v <- if (is.null(view)) NULL else giottoView(gobject, view)
     s <- .resolve_view_space(gobject, v, space)
     c <- if (is.null(coordinator)) .default_view_coordinator(gobject)
         else coordinator

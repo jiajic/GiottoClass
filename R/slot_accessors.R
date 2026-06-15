@@ -3743,7 +3743,12 @@ spatValues <- function(gobject,
     # getSpatialLocations(g, view = ..., space = ...) which projects
     # through the resolver at the subobject level.
     if (!is.null(view) || !is.null(space)) {
-        v <- if (is.character(view)) giottoView(gobject, view) else view
+        # view contract: character(1) name of a slotted view, or NULL.
+        # Inline giottoView objects rejected — see DESIGN_gmulti_federation.md.
+        if (!is.null(view)) {
+            checkmate::assert_string(view, .var.name = "view")
+        }
+        v <- if (is.null(view)) NULL else giottoView(gobject, view)
         s <- .resolve_view_space(gobject, v, space)
         coord <- .default_view_coordinator(gobject)
         # Re-entry guard: any internal spatValues call made while we're
