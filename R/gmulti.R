@@ -700,10 +700,10 @@ setMethod("show", "giottoMulti", function(object) {
 
     if (inherits(x, "nnNetObj")) {
         if (!is.null(cells)) {
-            g <- x@igraph
+            g <- x@network
             vnames <- names(igraph::V(g))
             keep <- vnames %in% cells
-            x@igraph <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+            x@network <- igraph::induced_subgraph(g, igraph::V(g)[keep])
         }
         return(x)
     }
@@ -1168,10 +1168,10 @@ setMethod("show", "giottoMulti", function(object) {
         return(x)
     }
     if (inherits(x, "nnNetObj")) {
-        g <- x@igraph
+        g <- x@network
         vnames <- names(igraph::V(g))
         keep <- starts_any(vnames)
-        x@igraph <- igraph::induced_subgraph(g, igraph::V(g)[keep])
+        x@network <- igraph::induced_subgraph(g, igraph::V(g)[keep])
         return(x)
     }
     x
