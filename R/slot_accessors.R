@@ -3764,19 +3764,13 @@ spatValues <- function(gobject,
         }
     }
 
-    # giottoMulti annotation: cell_IDs in the assembled / joint slots
-    # are namespaced as `<sample>::<original_id>`. Surface the sample
-    # tag as a `list_ID` column so downstream plot / analysis consumers
-    # can group / facet / color by sample without re-parsing the ID.
-    # Runs after view/space narrowing so list_ID only reflects surviving
-    # cells.
-    if (inherits(gobject, "giottoMulti") && !is.null(vals) &&
-        "cell_ID" %in% names(vals) && !"list_ID" %in% names(vals)) {
-        list_ID <- NULL  # NSE
-        vals[, list_ID := data.table::tstrsplit(
-            cell_ID, "::", fixed = TRUE)[[1L]]]
-        data.table::setcolorder(vals, c("cell_ID", "list_ID"))
-    }
+    # NOTE: spatValues used to re-derive a `list_ID` column on gmulti
+    # by parsing the `sample::cell_id` prefix from cell_IDs. Removed —
+    # `list_ID` is already present in joint cell_metadata (set by
+    # .gm_assemble_cell_metadata at federation time), and consumers
+    # that merge spatValues output with cmeta got duplicate-column
+    # collisions (list_ID.x / list_ID.y). The cmeta side is
+    # authoritative; spatValues no longer re-introduces the column.
 
     return(vals)
 }
