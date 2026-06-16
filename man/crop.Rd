@@ -9,6 +9,7 @@
 \alias{crop,spatLocsObj,ANY-method}
 \alias{crop,giottoPoints,ANY-method}
 \alias{crop,giottoPolygon,ANY-method}
+\alias{crop,gAny,ANY-method}
 \alias{crop,giottoView,ANY-method}
 \title{Crop to a spatial subset}
 \usage{
@@ -24,7 +25,9 @@
 
 \S4method{crop}{giottoPolygon,ANY}(x, y, DT = TRUE, xmin = NULL, xmax = NULL, ymin = NULL, ymax = NULL, ...)
 
-\S4method{crop}{giottoView,ANY}(x, y, relation = "intersects", ...)
+\S4method{crop}{gAny,ANY}(x, y, relation = "intersects", ..., view = NULL, space = NULL)
+
+\S4method{crop}{giottoView,ANY}(x, y, relation = "intersects", ..., space = NULL)
 }
 \arguments{
 \item{x}{object}
@@ -57,6 +60,18 @@ independently}
 centroids. One of \code{"intersects"} (default), \code{"within"}, \code{"contains"},
 \code{"covers"}, \code{"covered_by"}, \code{"overlaps"}, \code{"touches"}, \code{"crosses"},
 \code{"disjoint"}. Passed through to \link[terra:is.related]{terra::is.related}.}
+
+\item{view}{\code{NULL}, \code{character(1)}, or a \code{giottoView}. When supplied,
+records the crop as a step on the named slotted view (or on the
+supplied recipe) instead of executing eagerly. Eager \code{crop()} on a
+\code{giotto} is not yet implemented.}
+
+\item{space}{\code{NULL} or \code{character(1)}. Name of a slotted \link[=giottoSpace-class]{giottoSpace}
+on \code{x}. Sets the view's \verb{@space} reference — the coordinate frame in
+which the crop region is interpreted at resolution time. First call
+sets it; subsequent calls that try to rebind to a different name error.
+\code{NULL} leaves the view in whatever frame it was already bound to (or
+the gobject's native frame if unbound).}
 }
 \value{
 object of same class as \code{x}, spatially subsetted

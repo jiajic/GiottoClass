@@ -22,7 +22,8 @@
   y0,
   spat_unit = ":all:",
   feat_type = ":all:",
-  images = ":all:"
+  images = ":all:",
+  space = NULL
 )
 
 \S4method{rescale}{spatLocsObj}(x, fx = 1, fy = fx, fz = fx, x0, y0, z0)

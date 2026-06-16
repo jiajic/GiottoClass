@@ -3433,6 +3433,20 @@ spatValues <- function(gobject,
         return(svkey@get(gobject))
     }
     checkmate::assert_character(feats)
+    # dedupe — duplicate feats would produce duplicate columns downstream
+    # which silently breaks check_*'s as.data.table step (was the source
+    # of confusing "features not found in cell expression" errors).
+    feats <- unique(feats)
+    # scoped: when the caller has narrowed the search to one slot via a
+    # location param (`expression_values`, `spat_enr_name`, `spat_loc_name`,
+    # `poly_info`, `dim_reduction_to_use/_name`), permit partial matches —
+    # return values for the feats that are present, drop the rest with a
+    # verbose note. Unscoped (fall-through to all slots) keeps the strict
+    # all-or-nothing semantics so we don't return a partial match from
+    # the wrong slot.
+    scoped <- (!is.null(expression_values) || !is.null(spat_enr_name) ||
+        !is.null(spat_loc_name) || !is.null(poly_info) ||
+        !is.null(dim_reduction_to_use) || !is.null(dim_reduction_name))
 
     # Self-reference / re-entry guard. The resolver calls spatValues
     # internally to evaluate view-filter predicates; those calls pass
@@ -3466,6 +3480,23 @@ spatValues <- function(gobject,
 
 
     # checker closures ------------------------------------------------- #
+    # Resolve which feats to actually pull from a given slot's vocabulary,
+    # honoring the `scoped` flag from the enclosing env. Returns NULL when
+    # the slot should bail (no matches, or strict-mode partial match).
+    .resolve_feats <- function(available, slot_label) {
+        present <- intersect(feats, available)
+        if (length(present) == 0L) return(NULL)
+        if (!scoped && length(present) < length(feats)) return(NULL)
+        if (length(present) < length(feats)) {
+            vmsg(.v = verbose, sprintf(
+                "spatValues: %d of %d feats not found in %s, returning %d present",
+                length(feats) - length(present), length(feats),
+                slot_label, length(present)
+            ))
+        }
+        present
+    }
+
     check_expr <- function(vals) { # %%%%%%%%%%%%%%%%%%%%% EXPR %%%%%%
         if (!is.null(vals)) {
             return(vals)
@@ -3481,23 +3512,22 @@ spatValues <- function(gobject,
         if (is.null(e)) {
             return(NULL)
         }
-        if (all(feats %in% featIDs(e))) {
-            vals <- e[][feats, , drop = FALSE] |>
-                t_flex() |>
-                methods::as("dgCMatrix") |>
-                as.matrix() |>
-                data.table::as.data.table(keep.rownames = TRUE)
-            data.table::setnames(vals, old = "rn", new = "cell_ID")
-            vmsg(
-                .v = verbose,
-                sprintf(
-                    "Getting values from [%s][%s][%s] expression",
-                    spatUnit(e), featType(e), objName(e)
-                )
+        present <- .resolve_feats(featIDs(e), "expression")
+        if (is.null(present)) return(NULL)
+        vals <- e[][present, , drop = FALSE] |>
+            t_flex() |>
+            methods::as("dgCMatrix") |>
+            as.matrix() |>
+            data.table::as.data.table(keep.rownames = TRUE)
+        data.table::setnames(vals, old = "rn", new = "cell_ID")
+        vmsg(
+            .v = verbose,
+            sprintf(
+                "Getting values from [%s][%s][%s] expression",
+                spatUnit(e), featType(e), objName(e)
             )
-            return(vals)
-        }
-        return(NULL)
+        )
+        return(vals)
     }
     check_cellmeta <- function(vals) { # %%%%%%%%%%%% CELL META %%%%%%
         if (!is.null(vals)) {
@@ -3514,18 +3544,17 @@ spatValues <- function(gobject,
         if (is.null(cx)) {
             return(NULL)
         }
-        if (all(feats %in% colnames(cx))) {
-            vals <- cx[][, unique(c("cell_ID", feats)), with = FALSE]
-            vmsg(
-                .v = verbose,
-                sprintf(
-                    "Getting values from [%s][%s] cell metadata",
-                    spatUnit(cx), featType(cx)
-                )
+        present <- .resolve_feats(colnames(cx), "cell metadata")
+        if (is.null(present)) return(NULL)
+        vals <- cx[][, unique(c("cell_ID", present)), with = FALSE]
+        vmsg(
+            .v = verbose,
+            sprintf(
+                "Getting values from [%s][%s] cell metadata",
+                spatUnit(cx), featType(cx)
             )
-            return(vals)
-        }
-        return(NULL)
+        )
+        return(vals)
     }
     check_spatloc <- function(vals) { # %%%%%%%%%%%%%% SPAT LOC %%%%%%
         if (!is.null(vals)) {
@@ -3547,18 +3576,17 @@ spatValues <- function(gobject,
         if (is.null(sl)) {
             return(NULL)
         }
-        if (all(feats %in% colnames(sl[]))) {
-            vals <- sl[][, unique(c("cell_ID", feats)), with = FALSE]
-            vmsg(
-                .v = verbose,
-                sprintf(
-                    "Getting values from [%s][%s] spatial locations",
-                    spatUnit(sl), objName(sl)
-                )
+        present <- .resolve_feats(colnames(sl[]), "spatial locations")
+        if (is.null(present)) return(NULL)
+        vals <- sl[][, unique(c("cell_ID", present)), with = FALSE]
+        vmsg(
+            .v = verbose,
+            sprintf(
+                "Getting values from [%s][%s] spatial locations",
+                spatUnit(sl), objName(sl)
             )
-            return(vals)
-        }
-        return(NULL)
+        )
+        return(vals)
     }
     check_spatenr <- function(vals) { # %%%%%%%%%%%%%% SPAT ENR %%%%%%
         if (!is.null(vals)) {
@@ -3576,18 +3604,17 @@ spatValues <- function(gobject,
         if (is.null(enr)) {
             return(NULL)
         }
-        if (all(feats %in% colnames(enr[]))) {
-            vals <- enr[][, unique(c("cell_ID", feats)), with = FALSE]
-            vmsg(
-                .v = verbose,
-                sprintf(
-                    "Getting values from [%s][%s][%s] spatial enrichment",
-                    spatUnit(enr), featType(enr), objName(enr)
-                )
+        present <- .resolve_feats(colnames(enr[]), "spatial enrichment")
+        if (is.null(present)) return(NULL)
+        vals <- enr[][, unique(c("cell_ID", present)), with = FALSE]
+        vmsg(
+            .v = verbose,
+            sprintf(
+                "Getting values from [%s][%s][%s] spatial enrichment",
+                spatUnit(enr), featType(enr), objName(enr)
             )
-            return(vals)
-        }
-        return(NULL)
+        )
+        return(vals)
     }
     check_dimred <- function(vals) { # %%%%%%%%%%%%%% DIM RED %%%%%%
         if (!is.null(vals)) {
@@ -3606,22 +3633,21 @@ spatValues <- function(gobject,
         if (is.null(dr)) {
             return(NULL)
         }
-        if (all(feats %in% colnames(dr[]))) {
-            vals <- dr[][, feats, drop = FALSE] |>
-                as.matrix() |>
-                data.table::as.data.table(keep.rownames = TRUE)
-            data.table::setnames(vals, old = "rn", new = "cell_ID")
-            vmsg(
-                .v = verbose,
-                sprintf(
-                    "Getting values from [%s][%s][%s][%s] dim reduction",
-                    spatUnit(dr), featType(dr),
-                    dr@reduction_method, objName(dr)
-                )
+        present <- .resolve_feats(colnames(dr[]), "dim reduction")
+        if (is.null(present)) return(NULL)
+        vals <- dr[][, present, drop = FALSE] |>
+            as.matrix() |>
+            data.table::as.data.table(keep.rownames = TRUE)
+        data.table::setnames(vals, old = "rn", new = "cell_ID")
+        vmsg(
+            .v = verbose,
+            sprintf(
+                "Getting values from [%s][%s][%s][%s] dim reduction",
+                spatUnit(dr), featType(dr),
+                dr@reduction_method, objName(dr)
             )
-            return(vals)
-        }
-        return(NULL)
+        )
+        return(vals)
     }
     check_polyinfo <- function(vals) { # %%%%%%%%%%%% POLY INFO %%%%%%
         if (!is.null(vals)) {
@@ -3638,19 +3664,18 @@ spatValues <- function(gobject,
             return(NULL)
         }
         sv <- p[]
-        if (all(feats %in% names(sv))) {
-            vals <- data.table::as.data.table(sv)
-            data.table::setnames(vals, old = "poly_ID", new = "cell_ID")
-            vmsg(
-                .v = verbose,
-                sprintf(
-                    "Getting values from [%s] polygon info",
-                    spatUnit(p)
-                )
+        present <- .resolve_feats(names(sv), "polygon info")
+        if (is.null(present)) return(NULL)
+        vals <- data.table::as.data.table(sv)
+        data.table::setnames(vals, old = "poly_ID", new = "cell_ID")
+        vmsg(
+            .v = verbose,
+            sprintf(
+                "Getting values from [%s] polygon info",
+                spatUnit(p)
             )
-            return(vals[, unique(c("cell_ID", feats)), with = FALSE])
-        }
-        return(NULL)
+        )
+        return(vals[, unique(c("cell_ID", present)), with = FALSE])
     }
 
 
@@ -3749,7 +3774,6 @@ spatValues <- function(gobject,
             checkmate::assert_string(view, .var.name = "view")
         }
         v <- if (is.null(view)) NULL else giottoView(gobject, view)
-        s <- .resolve_view_space(gobject, v, space)
         coord <- .default_view_coordinator(gobject)
         # Re-entry guard: any internal spatValues call made while we're
         # computing surviving cell_IDs sees the option set and drops its
@@ -3758,19 +3782,24 @@ spatValues <- function(gobject,
         options(giotto.spatValues_view_active = TRUE)
         on.exit(options(giotto.spatValues_view_active = old_opt),
             add = TRUE)
-        keep <- .cached_surviving_cell_ids(gobject, v, s, coord)
+        # Predicate frame is read from v@space inside .surviving_cell_ids;
+        # the explicit `space` arg here only affects coord transforms on
+        # value cols (not implemented for spatValues -- doc above).
+        keep <- .cached_surviving_cell_ids(gobject, v, coord)
         if (!is.null(keep)) {
             vals <- vals[cell_ID %in% keep]
         }
     }
 
-    # NOTE: spatValues used to re-derive a `list_ID` column on gmulti
-    # by parsing the `sample::cell_id` prefix from cell_IDs. Removed —
-    # `list_ID` is already present in joint cell_metadata (set by
-    # .gm_assemble_cell_metadata at federation time), and consumers
-    # that merge spatValues output with cmeta got duplicate-column
-    # collisions (list_ID.x / list_ID.y). The cmeta side is
-    # authoritative; spatValues no longer re-introduces the column.
+    # Note: previously spatValues auto-added a `list_ID` column on
+    # giottoMulti outputs as a convenience for grouped plotting. Removed
+    # because it duplicated the `list_ID` that `.gm_assemble_cell_metadata`
+    # already plants in joint @cell_metadata — and downstream merges
+    # (e.g. dimFeatPlot2D's metadata + spatValues join) collided into
+    # `list_ID.x` / `list_ID.y`. cell_metadata is now the single source of
+    # truth for the sample tag; callers who want list_ID and didn't fetch
+    # metadata can derive it via
+    # `tstrsplit(cell_ID, "::", fixed = TRUE)[[1L]]` themselves.
 
     return(vals)
 }

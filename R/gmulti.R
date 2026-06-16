@@ -360,6 +360,11 @@ setMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing"),
 #' @noRd
 setReplaceMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing", value = "giotto"),
     function(x, i, j, ..., initialize = TRUE, value) {
+        # Detect populated joint slots BEFORE mutation so we can warn
+        # if the add leaves them incomplete for the new sample's cells.
+        is_new <- !(i %in% names(x@objects))
+        populated_before <- .gm_populated_joint_slots(x)
+
         x@objects[[i]] <- value
         # Default: re-initialize so id_map rebuilds and any prior
         # narrowing (@cell_ID / @feat_ID) clears -- structural change
@@ -368,16 +373,60 @@ setReplaceMethod("[[", signature(x = "giottoMulti", i = "ANY", j = "missing", va
         # can pass `initialize = FALSE` and run `initialize(mg)` once at
         # the end to amortize.
         if (isTRUE(initialize)) x <- initialize(x)
+
+        # When adding a NEW sample to a gmulti with already-populated
+        # joint slots, those slots cover only the original samples.
+        # Surface this so the user knows to extend, recompute, or rebuild.
+        if (is_new && length(populated_before) > 0L) {
+            warning(.gm_add_joint_nudge(i, populated_before),
+                call. = FALSE)
+        }
         x
     }
 )
+
+
+# ---- helpers for add-time joint-slot nudge -------------------------------
+#
+# Adding a new sample to a gmulti with populated joint slots leaves those
+# slots covering only the original samples. The new sample's cells are
+# absent from joint @expression / @cell_metadata / @dimension_reduction /
+# @nn_network / @spatial_enrichment until the user either re-runs the
+# corresponding compute, drops the slot, or rebuilds via
+# createGiottoMulti(). Surface this loudly so it can't be missed.
+
+#' @noRd
+.gm_populated_joint_slots <- function(x) {
+    candidates <- c("expression", "cell_metadata", "feat_metadata",
+        "dimension_reduction", "nn_network", "spatial_enrichment")
+    has <- vapply(candidates, function(s) {
+        v <- slot(x, s)
+        !is.null(v) && length(v) > 0L
+    }, logical(1L))
+    candidates[has]
+}
+
+#' @noRd
+.gm_add_joint_nudge <- function(new_sample, slots) {
+    slot_list <- paste(slots, collapse = ", ")
+    paste0(
+        "[gmulti] added sample '", new_sample, "' but joint shared slot(s) ",
+        "do not cover its cells: ", slot_list, ".\n",
+        "These slots now reflect only the original samples. Options:\n",
+        "  - Recompute affected slots (preferred when the analysis ",
+        "context matters)\n",
+        "  - Drop a stale slot if not needed: ",
+        "g@<slot_name> <- list()   (e.g. g@nn_network <- list())\n",
+        "  - Rebuild fresh: createGiottoMulti(g@objects)"
+    )
+}
 
 #' @noRd
 setMethod("[", signature(x = "giottoMulti", i = "ANY"),
     function(x, i, j, ..., drop = TRUE) {
         # Select children by name or integer index; return a new giottoMulti
-        # with the chosen subset. Joint shared slots are NOT rewritten — the
-        # caller can subset/compact if they want them aligned.
+        # with the chosen subset. Joint shared slots are auto-pruned to the
+        # surviving sample::id globals so the result is self-consistent.
         sel <- if (is.character(i)) {
             bad <- setdiff(i, names(x))
             if (length(bad) > 0L) {
@@ -390,11 +439,277 @@ setMethod("[", signature(x = "giottoMulti", i = "ANY"),
         }
         out <- x
         out@objects <- x@objects[sel]
+
+        # Compute the surviving global cell-id set from kept samples'
+        # current id_map rows, then prune every joint shared slot to it.
+        # Features are not sample-namespaced so feat_metadata stays as-is.
+        cm <- x@id_map$cells
+        if (!is.null(cm) && nrow(cm) > 0L) {
+            keep_globals <- cm[cm$object %in% sel, ]$global_id
+            out@expression          <- .gm_prune_expression(out@expression, keep_globals)
+            out@cell_metadata       <- .gm_prune_cell_metadata(out@cell_metadata, keep_globals)
+            out@dimension_reduction <- .gm_prune_dim_reduction(out@dimension_reduction, keep_globals)
+            out@nn_network          <- .gm_prune_nn_network(out@nn_network, keep_globals)
+            out@spatial_enrichment  <- .gm_prune_spatial_enrichment(out@spatial_enrichment, keep_globals)
+        }
+
         # rebuild id_map for the new child set
         out@id_sig <- list()
         initialize(out)
     }
 )
+
+# ---- helpers for sample-prefix rewriting on rename ------------------------
+#
+# Joint shared slots key cell-axis content by `sample::local_id`. Renaming a
+# child (sample) requires rewriting that prefix everywhere it appears so
+# downstream getters / view filters keep matching. Each helper walks one
+# slot's specific nesting and returns the rewritten value. Features are
+# never sample-namespaced (id_map$feats$global_id == local_id) so the
+# feat_metadata / @feat_ID slots stay untouched.
+
+#' @noRd
+.rewrite_sample_id <- function(ids, old_to_new) {
+    # Split "sample::rest" -> ("sample", "::rest"); remap sample part.
+    pos <- regexpr("::", ids, fixed = TRUE)
+    has_sep <- pos > 0L
+    if (!any(has_sep)) return(ids)
+    samp <- substr(ids[has_sep], 1L, pos[has_sep] - 1L)
+    rest <- substr(ids[has_sep], pos[has_sep],
+        nchar(ids[has_sep]))   # keeps the "::"
+    new_samp <- unname(old_to_new[samp])
+    # Samples not in the rename map keep their original prefix (safety).
+    new_samp[is.na(new_samp)] <- samp[is.na(new_samp)]
+    ids[has_sep] <- paste0(new_samp, rest)
+    ids
+}
+
+#' @noRd
+.gm_rewrite_expression <- function(expr_slot, old_to_new) {
+    if (is.null(expr_slot) || length(expr_slot) == 0L) return(expr_slot)
+    for (su in names(expr_slot)) {
+        for (ft in names(expr_slot[[su]])) {
+            for (v in names(expr_slot[[su]][[ft]])) {
+                e <- expr_slot[[su]][[ft]][[v]]
+                m <- e[]
+                cn <- colnames(m)
+                if (!is.null(cn)) {
+                    colnames(m) <- .rewrite_sample_id(cn, old_to_new)
+                    e[] <- m
+                }
+                expr_slot[[su]][[ft]][[v]] <- e
+            }
+        }
+    }
+    expr_slot
+}
+
+#' @noRd
+.gm_rewrite_cell_metadata <- function(cm_slot, old_to_new) {
+    if (is.null(cm_slot) || length(cm_slot) == 0L) return(cm_slot)
+    cell_ID <- NULL    # NSE
+    for (su in names(cm_slot)) {
+        for (ft in names(cm_slot[[su]])) {
+            cm <- cm_slot[[su]][[ft]]
+            dt <- data.table::copy(cm[])
+            if ("cell_ID" %in% names(dt)) {
+                dt[, cell_ID := .rewrite_sample_id(cell_ID, old_to_new)]
+                cm[] <- dt
+            }
+            cm_slot[[su]][[ft]] <- cm
+        }
+    }
+    cm_slot
+}
+
+#' @noRd
+.gm_rewrite_dim_reduction <- function(dr_slot, old_to_new) {
+    if (is.null(dr_slot) || length(dr_slot) == 0L) return(dr_slot)
+    for (red in names(dr_slot)) {
+        for (su in names(dr_slot[[red]])) {
+            for (ft in names(dr_slot[[red]][[su]])) {
+                for (method in names(dr_slot[[red]][[su]][[ft]])) {
+                    for (nm in names(dr_slot[[red]][[su]][[ft]][[method]])) {
+                        d <- dr_slot[[red]][[su]][[ft]][[method]][[nm]]
+                        rn <- rownames(d@coordinates)
+                        if (!is.null(rn)) {
+                            rownames(d@coordinates) <-
+                                .rewrite_sample_id(rn, old_to_new)
+                        }
+                        dr_slot[[red]][[su]][[ft]][[method]][[nm]] <- d
+                    }
+                }
+            }
+        }
+    }
+    dr_slot
+}
+
+#' @noRd
+.gm_rewrite_nn_network <- function(nn_slot, old_to_new) {
+    if (is.null(nn_slot) || length(nn_slot) == 0L) return(nn_slot)
+    for (su in names(nn_slot)) {
+        for (ft in names(nn_slot[[su]])) {
+            for (nn_type in names(nn_slot[[su]][[ft]])) {
+                for (nm in names(nn_slot[[su]][[ft]][[nn_type]])) {
+                    nn <- nn_slot[[su]][[ft]][[nn_type]][[nm]]
+                    g <- nn@network
+                    if (inherits(g, "igraph")) {
+                        vn <- names(igraph::V(g))
+                        if (!is.null(vn)) {
+                            new_vn <- .rewrite_sample_id(vn, old_to_new)
+                            g <- igraph::set_vertex_attr(g,
+                                "name", value = new_vn)
+                            nn@network <- g
+                        }
+                    }
+                    nn_slot[[su]][[ft]][[nn_type]][[nm]] <- nn
+                }
+            }
+        }
+    }
+    nn_slot
+}
+
+#' @noRd
+.gm_rewrite_spatial_enrichment <- function(se_slot, old_to_new) {
+    if (is.null(se_slot) || length(se_slot) == 0L) return(se_slot)
+    cell_ID <- NULL    # NSE
+    for (su in names(se_slot)) {
+        for (ft in names(se_slot[[su]])) {
+            for (nm in names(se_slot[[su]][[ft]])) {
+                se <- se_slot[[su]][[ft]][[nm]]
+                dt <- data.table::copy(se[])
+                if ("cell_ID" %in% names(dt)) {
+                    dt[, cell_ID := .rewrite_sample_id(cell_ID, old_to_new)]
+                    se[] <- dt
+                }
+                se_slot[[su]][[ft]][[nm]] <- se
+            }
+        }
+    }
+    se_slot
+}
+
+#' @noRd
+.gm_rewrite_narrowing <- function(ids_slot, old_to_new) {
+    if (is.null(ids_slot) || length(ids_slot) == 0L) return(ids_slot)
+    lapply(ids_slot, .rewrite_sample_id, old_to_new = old_to_new)
+}
+
+
+# ---- helpers for joint slot pruning on subset -----------------------------
+#
+# After `g[keep_samples]` drops some samples from @objects, joint shared
+# slots that key on `sample::local_id` still reference orphan globals
+# (cells from dropped samples). These helpers prune each slot to the
+# surviving global cell-id set so the result is self-consistent.
+
+#' @noRd
+.gm_prune_expression <- function(expr_slot, keep_globals) {
+    if (is.null(expr_slot) || length(expr_slot) == 0L) return(expr_slot)
+    for (su in names(expr_slot)) {
+        for (ft in names(expr_slot[[su]])) {
+            for (v in names(expr_slot[[su]][[ft]])) {
+                e <- expr_slot[[su]][[ft]][[v]]
+                m <- e[]
+                cn <- colnames(m)
+                if (!is.null(cn)) {
+                    keep_idx <- cn %in% keep_globals
+                    e[] <- m[, keep_idx, drop = FALSE]
+                }
+                expr_slot[[su]][[ft]][[v]] <- e
+            }
+        }
+    }
+    expr_slot
+}
+
+#' @noRd
+.gm_prune_cell_metadata <- function(cm_slot, keep_globals) {
+    if (is.null(cm_slot) || length(cm_slot) == 0L) return(cm_slot)
+    cell_ID <- NULL    # NSE
+    for (su in names(cm_slot)) {
+        for (ft in names(cm_slot[[su]])) {
+            cm <- cm_slot[[su]][[ft]]
+            dt <- data.table::copy(cm[])
+            if ("cell_ID" %in% names(dt)) {
+                cm[] <- dt[cell_ID %in% keep_globals]
+            }
+            cm_slot[[su]][[ft]] <- cm
+        }
+    }
+    cm_slot
+}
+
+#' @noRd
+.gm_prune_dim_reduction <- function(dr_slot, keep_globals) {
+    if (is.null(dr_slot) || length(dr_slot) == 0L) return(dr_slot)
+    for (red in names(dr_slot)) {
+        for (su in names(dr_slot[[red]])) {
+            for (ft in names(dr_slot[[red]][[su]])) {
+                for (method in names(dr_slot[[red]][[su]][[ft]])) {
+                    for (nm in names(dr_slot[[red]][[su]][[ft]][[method]])) {
+                        d <- dr_slot[[red]][[su]][[ft]][[method]][[nm]]
+                        rn <- rownames(d@coordinates)
+                        if (!is.null(rn)) {
+                            keep_idx <- rn %in% keep_globals
+                            d@coordinates <- d@coordinates[keep_idx, ,
+                                drop = FALSE]
+                        }
+                        dr_slot[[red]][[su]][[ft]][[method]][[nm]] <- d
+                    }
+                }
+            }
+        }
+    }
+    dr_slot
+}
+
+#' @noRd
+.gm_prune_nn_network <- function(nn_slot, keep_globals) {
+    if (is.null(nn_slot) || length(nn_slot) == 0L) return(nn_slot)
+    for (su in names(nn_slot)) {
+        for (ft in names(nn_slot[[su]])) {
+            for (nn_type in names(nn_slot[[su]][[ft]])) {
+                for (nm in names(nn_slot[[su]][[ft]][[nn_type]])) {
+                    nn <- nn_slot[[su]][[ft]][[nn_type]][[nm]]
+                    g <- nn@network
+                    if (inherits(g, "igraph")) {
+                        vn <- names(igraph::V(g))
+                        if (!is.null(vn)) {
+                            keep_v <- which(vn %in% keep_globals)
+                            nn@network <- igraph::induced_subgraph(
+                                g, igraph::V(g)[keep_v])
+                        }
+                    }
+                    nn_slot[[su]][[ft]][[nn_type]][[nm]] <- nn
+                }
+            }
+        }
+    }
+    nn_slot
+}
+
+#' @noRd
+.gm_prune_spatial_enrichment <- function(se_slot, keep_globals) {
+    if (is.null(se_slot) || length(se_slot) == 0L) return(se_slot)
+    cell_ID <- NULL    # NSE
+    for (su in names(se_slot)) {
+        for (ft in names(se_slot[[su]])) {
+            for (nm in names(se_slot[[su]][[ft]])) {
+                se <- se_slot[[su]][[ft]][[nm]]
+                dt <- data.table::copy(se[])
+                if ("cell_ID" %in% names(dt)) {
+                    se[] <- dt[cell_ID %in% keep_globals]
+                }
+                se_slot[[su]][[ft]][[nm]] <- se
+            }
+        }
+    }
+    se_slot
+}
+
 
 #' @noRd
 setReplaceMethod("names", signature(x = "giottoMulti", value = "character"),
@@ -410,29 +725,18 @@ setReplaceMethod("names", signature(x = "giottoMulti", value = "character"),
             stop("child names must be unique", call. = FALSE)
         }
 
-        # Joint shared slots encode child names inside their globals
-        # (sample::id colnames, cell_ID values, etc.). Renaming would
-        # silently break those references — the view filter would then
-        # see no overlap and return zero rows. Refuse rather than
-        # corrupt. User must populate joint state AFTER renaming, or
-        # drop the joint state first (setExpression(mg, NULL), etc.).
-        populated_slots <- c("expression", "cell_metadata", "feat_metadata",
-            "dimension_reduction", "nn_network", "spatial_enrichment")
-        has_joint <- vapply(populated_slots, function(s) {
-            v <- slot(x, s)
-            !is.null(v) && length(v) > 0L
-        }, logical(1L))
-        if (any(has_joint)) {
-            stop(wrap_txt(sprintf(
-                "Cannot rename children of a giottoMulti with populated
-                joint shared slots: %s. Joint content is keyed on the
-                current child names; renaming would invalidate it
-                silently. Rename children before populating joint state,
-                or drop the joint slots first (e.g.
-                setExpression(mg, NULL, ...) per entry).",
-                paste(names(has_joint)[has_joint], collapse = ", ")
-            )), call. = FALSE)
-        }
+        # Rewrite sample::id prefix across every joint shared slot that
+        # carries cell-axis keys. Features are never sample-namespaced
+        # (id_map$feats$global_id == local_id) so feat_metadata stays as-is.
+        # Disk-backed networks (parquetEdgeStore) get a separate alias-layer
+        # treatment (todo #6) — this in-memory walk doesn't touch them.
+        old_to_new <- setNames(value, old_names)
+        x@expression          <- .gm_rewrite_expression(x@expression, old_to_new)
+        x@cell_metadata       <- .gm_rewrite_cell_metadata(x@cell_metadata, old_to_new)
+        x@dimension_reduction <- .gm_rewrite_dim_reduction(x@dimension_reduction, old_to_new)
+        x@nn_network          <- .gm_rewrite_nn_network(x@nn_network, old_to_new)
+        x@spatial_enrichment  <- .gm_rewrite_spatial_enrichment(x@spatial_enrichment, old_to_new)
+        x@cell_ID             <- .gm_rewrite_narrowing(x@cell_ID, old_to_new)
 
         names(x@objects) <- value
         # id_map embeds the old names in object column AND in global_id;
@@ -1719,6 +2023,51 @@ setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
             call. = FALSE)
     }
     .gm_resolve_objects(gobject, object)
+}
+
+#' Project joint-level @cell_metadata columns into a local copy of a child.
+#'
+#' Per-child consumers (plot dispatch, combineMetadata, etc.) need to
+#' color / merge by joint analysis outputs (leiden, cell_types, harmony
+#' projections, ...) which by the child-immutability invariant only
+#' live on the gmulti's joint slot. This helper:
+#'
+#' - reads the joint cell_metadata via `pDataDT(mg)` (proper getter — view/
+#'   space recipes apply at that choke point);
+#' - filters to rows whose namespaced `cell_ID` belongs to `child_name`;
+#'   strips the `<child>::` prefix so the IDs match the child's keys;
+#' - identifies columns the child doesn't already have (joint-only);
+#' - writes them via `addCellMetadata` (proper setter, `copy_obj = TRUE`)
+#'   into a local copy of the child. The child in `mg@objects` is never
+#'   mutated.
+#'
+#' Returns the augmented child gobject.
+#'
+#' @noRd
+.gm_inject_joint_metadata <- function(mg, child_g, child_name) {
+    cell_ID <- NULL # NSE
+    joint_cm <- tryCatch(
+        pDataDT(mg),
+        error = function(e) NULL
+    )
+    if (is.null(joint_cm) || nrow(joint_cm) == 0L) return(child_g)
+
+    prefix <- paste0(child_name, "::")
+    rows <- joint_cm[startsWith(cell_ID, prefix)]
+    if (nrow(rows) == 0L) return(child_g)
+    rows <- data.table::copy(rows)
+    rows[, cell_ID := sub(prefix, "", cell_ID, fixed = TRUE)]
+
+    child_cm <- tryCatch(pDataDT(child_g),
+        error = function(e) NULL)
+    if (is.null(child_cm)) return(child_g)
+    joint_only <- setdiff(names(rows), c(names(child_cm), "list_ID"))
+    if (length(joint_only) == 0L) return(child_g)
+
+    addCellMetadata(child_g,
+        new_metadata = rows[, c("cell_ID", joint_only), with = FALSE],
+        by_column = TRUE,
+        column_cell_ID = "cell_ID")
 }
 
 #' @rdname getSpatialLocations

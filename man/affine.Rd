@@ -23,6 +23,7 @@
   spat_unit = ":all:",
   feat_type = ":all:",
   images = ":all:",
+  space = NULL,
   ...
 )
 

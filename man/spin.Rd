@@ -15,7 +15,15 @@
 \usage{
 \S4method{spin}{giottoSpace}(x, angle = 0, ...)
 
-\S4method{spin}{giotto}(x, angle, x0 = NULL, y0 = NULL, spat_unit = ":all:", feat_type = ":all:")
+\S4method{spin}{giotto}(
+  x,
+  angle,
+  x0 = NULL,
+  y0 = NULL,
+  spat_unit = ":all:",
+  feat_type = ":all:",
+  space = NULL
+)
 
 \S4method{spin}{giottoPolygon}(x, angle, x0 = NULL, y0 = NULL)
 

@@ -179,26 +179,26 @@ setMethod("defaultViewCoordinator", signature(source = "ANY"),
     sv[["cell_ID"]][which(keep)]
 }
 
-# Resolve the space (if any) referenced by a view, normalising the
-# explicit `space` argument passed to materialize() / resolveSubobject().
+# Normalise the explicit `space` argument to a giottoSpace (or NULL).
 # Accepts: NULL (no space), a giottoSpace, or a character name to look up
-# on the gobject. Falls back to the view's `@space` reference if explicit
-# is NULL.
+# on the gobject.
+#
+# IMPORTANT: this only resolves the *output* space -- the frame that
+# transforms get applied to on returned data. The *predicate* frame
+# (how a recorded crop region is interpreted) lives on `view@space` and
+# is consulted directly by the crop step handlers (.surviving_cell_ids,
+# .surviving_cell_ids_arrow, .push_view_to_dt, .push_view_to_pstore).
+# Conflating the two was the original bug that caused
+# `getSpatialLocations(g, view = "test")` to silently return rotated
+# coords whenever `view@space` was set.
 #' @keywords internal
 #' @noRd
-.resolve_view_space <- function(gobject, view, explicit_space = NULL) {
-    if (!is.null(explicit_space)) {
-        if (inherits(explicit_space, "giottoSpace")) return(explicit_space)
-        if (is.character(explicit_space)) {
-            return(giottoSpace(gobject, explicit_space))
-        }
-        stop("`space` must be NULL, a character(1), or a giottoSpace",
-            call. = FALSE)
-    }
-    if (!is.null(view) && !is.na(view@space)) {
-        return(giottoSpace(gobject, view@space))
-    }
-    NULL
+.resolve_space <- function(gobject, space = NULL) {
+    if (is.null(space)) return(NULL)
+    if (inherits(space, "giottoSpace")) return(space)
+    if (is.character(space)) return(giottoSpace(gobject, space))
+    stop("`space` must be NULL, a character(1), or a giottoSpace",
+        call. = FALSE)
 }
 
 # Pick the right sample key from a giottoSpace for the current gobject.
@@ -275,12 +275,35 @@ setMethod("defaultViewCoordinator", signature(source = "ANY"),
 # Pull the gobject's spatLocs (active spat_unit) as a data.table, optionally
 # applying the relevant space's transforms first. Used by .surviving_cell_ids
 # for crop-step interpretation.
+#
+# giottoMulti: getSpatialLocations returns a per-child named list (spatial
+# locations live per-child, no joint slot). Scope the space to each child,
+# apply, and rbind the coordinate DTs with `<sample>::` prefixed cell_IDs
+# so crop-step results match the joint cell_metadata vocabulary.
 #' @keywords internal
 #' @noRd
 .get_projected_spatlocs <- function(gobject, space, coordinator) {
+    cell_ID <- NULL  # NSE
     sl <- tryCatch(getSpatialLocations(gobject, output = "spatLocsObj"),
         error = function(e) NULL)
     if (is.null(sl)) return(NULL)
+    if (is.list(sl) && !inherits(sl, "spatLocsObj")) {
+        parts <- lapply(names(sl), function(nm) {
+            child_sl <- sl[[nm]]
+            if (!inherits(child_sl, "spatLocsObj")) return(NULL)
+            child_space <- .scope_space_to_sample(space, nm)
+            if (!is.null(child_space)) {
+                child_sl <- .apply_space_to_subobj(child_sl, gobject,
+                    child_space, coordinator)
+            }
+            dt <- data.table::copy(child_sl@coordinates)
+            dt[, cell_ID := paste(nm, cell_ID, sep = "::")]
+            dt
+        })
+        parts <- Filter(Negate(is.null), parts)
+        if (length(parts) == 0L) return(NULL)
+        return(data.table::rbindlist(parts, use.names = TRUE, fill = TRUE))
+    }
     if (!is.null(space)) {
         sl <- .apply_space_to_subobj(sl, gobject, space, coordinator)
     }
@@ -307,11 +330,12 @@ setMethod("defaultViewCoordinator", signature(source = "ANY"),
     # if programmatic composition is needed. See vignettes/
     # DESIGN_gmulti_federation.md for the reasoning.
     if (!is.null(view)) {
-        checkmate::assert_string(view,
-            .var.name = "view")
+        checkmate::assert_string(view, .var.name = "view")
     }
     v <- if (is.null(view)) NULL else giottoView(gobject, view)
-    s <- .resolve_view_space(gobject, v, space)
+    # `space` here is the OUTPUT frame -- the predicate frame (view@space)
+    # is consulted independently by the crop step handlers below.
+    s <- .resolve_space(gobject, space)
     c <- if (is.null(coordinator)) .default_view_coordinator(gobject)
         else coordinator
     resolveSubobject(subobj, gobject, v, s, c)
@@ -333,15 +357,15 @@ setMethod("defaultViewCoordinator", signature(source = "ANY"),
 # if supplied; falls back to a direct call when cache is NULL.
 #' @keywords internal
 #' @noRd
-.cached_surviving_cell_ids <- function(gobject, view, space, coordinator,
+.cached_surviving_cell_ids <- function(gobject, view, coordinator,
                                        cache = NULL) {
     if (is.null(cache)) {
-        return(.surviving_cell_ids(gobject, view, space, coordinator))
+        return(.surviving_cell_ids(gobject, view, coordinator))
     }
     if (exists("surviving_ids", envir = cache, inherits = FALSE)) {
         return(get("surviving_ids", envir = cache))
     }
-    ids <- .surviving_cell_ids(gobject, view, space, coordinator)
+    ids <- .surviving_cell_ids(gobject, view, coordinator)
     assign("surviving_ids", ids, envir = cache)
     ids
 }
@@ -349,9 +373,14 @@ setMethod("defaultViewCoordinator", signature(source = "ANY"),
 # Compute the cell_ID set that survives a view's filter + crop + sample
 # select steps. Returns a character vector of cell_IDs; NULL means "no
 # narrowing" (all cells survive).
+#
+# The PREDICATE frame for crop steps is `view@space` -- the frame the
+# crop region was drawn in. This is independent of any output space the
+# caller may have requested via the explicit `space=` arg, which is why
+# this helper no longer takes a `space` argument.
 #' @keywords internal
 #' @noRd
-.surviving_cell_ids <- function(gobject, view, space, coordinator) {
+.surviving_cell_ids <- function(gobject, view, coordinator) {
     if (is.null(view)) return(NULL)
 
     filter_steps <- Filter(function(s) inherits(s, "viewFilter"), view@steps)
@@ -365,13 +394,17 @@ setMethod("defaultViewCoordinator", signature(source = "ANY"),
         surviving <- intersect(surviving, keep)
     }
     if (length(crop_steps) > 0L) {
-        sl_dt <- .get_projected_spatlocs(gobject, space, coordinator)
+        pred_space <- if (!is.na(view@space)) {
+            .resolve_space(gobject, view@space)
+        } else NULL
+        sl_dt <- .get_projected_spatlocs(gobject, pred_space, coordinator)
         if (is.null(sl_dt)) {
             warning("viewCrop step skipped: no spatial locations available",
                 call. = FALSE)
         } else {
             for (step in crop_steps) {
-                keep <- .cells_in_region(sl_dt, step@region, step@relation)
+                region <- .materialize_crop_region(step@region)
+                keep <- .cells_in_region(sl_dt, region, step@relation)
                 surviving <- intersect(surviving, keep)
             }
         }
@@ -397,7 +430,7 @@ setMethod("resolveSubobject",
     signature(subobj = "cellMetaObj", coordinator = "dataTableCoordinator"),
     function(subobj, gobject, view, space, coordinator, ...) {
         cache <- list(...)$.cache
-        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        keep <- .cached_surviving_cell_ids(gobject, view, coordinator, cache)
         if (is.null(keep)) return(subobj)
         out <- subobj
         out@metaDT <- subobj@metaDT[cell_ID %in% keep]
@@ -411,7 +444,7 @@ setMethod("resolveSubobject",
     signature(subobj = "exprObj", coordinator = "dataTableCoordinator"),
     function(subobj, gobject, view, space, coordinator, ...) {
         cache <- list(...)$.cache
-        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        keep <- .cached_surviving_cell_ids(gobject, view, coordinator, cache)
         if (is.null(keep)) return(subobj)
         m <- subobj@exprMat
         # expression matrices are features x cells; narrow columns
@@ -428,7 +461,7 @@ setMethod("resolveSubobject",
     signature(subobj = "dimObj", coordinator = "dataTableCoordinator"),
     function(subobj, gobject, view, space, coordinator, ...) {
         cache <- list(...)$.cache
-        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        keep <- .cached_surviving_cell_ids(gobject, view, coordinator, cache)
         if (is.null(keep)) return(subobj)
         coords <- subobj@coordinates
         # dim reductions are cells x dims; rownames are cell_IDs
@@ -445,7 +478,7 @@ setMethod("resolveSubobject",
     signature(subobj = "spatEnrObj", coordinator = "dataTableCoordinator"),
     function(subobj, gobject, view, space, coordinator, ...) {
         cache <- list(...)$.cache
-        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        keep <- .cached_surviving_cell_ids(gobject, view, coordinator, cache)
         if (is.null(keep)) return(subobj)
         out <- subobj
         out@enrichDT <- subobj@enrichDT[cell_ID %in% keep]
@@ -480,7 +513,7 @@ setMethod("resolveSubobject",
     signature(subobj = "spatLocsObj", coordinator = "dataTableCoordinator"),
     function(subobj, gobject, view, space, coordinator, ...) {
         cache <- list(...)$.cache
-        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        keep <- .cached_surviving_cell_ids(gobject, view, coordinator, cache)
         if (!is.null(keep)) {
             subobj@coordinates <- subobj@coordinates[cell_ID %in% keep]
         }
@@ -494,7 +527,7 @@ setMethod("resolveSubobject",
     signature(subobj = "giottoPolygon", coordinator = "dataTableCoordinator"),
     function(subobj, gobject, view, space, coordinator, ...) {
         cache <- list(...)$.cache
-        keep <- .cached_surviving_cell_ids(gobject, view, space, coordinator, cache)
+        keep <- .cached_surviving_cell_ids(gobject, view, coordinator, cache)
         if (!is.null(keep)) {
             # Polygon's poly_ID is conventionally aligned with cell_ID
             # for the cells spat_unit. Narrow spatVector by poly_ID
@@ -533,7 +566,7 @@ setMethod("resolveSubobject",
             # then crop in that frame
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@region)
+                subobj <- crop(subobj, .materialize_crop_region(step@region))
             }
             return(subobj)
         }
@@ -551,7 +584,7 @@ setMethod("resolveSubobject",
                 view@steps)
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@region)
+                subobj <- crop(subobj, .materialize_crop_region(step@region))
             }
             return(subobj)
         }
@@ -569,7 +602,7 @@ setMethod("resolveSubobject",
                 view@steps)
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@region)
+                subobj <- crop(subobj, .materialize_crop_region(step@region))
             }
             return(subobj)
         }
@@ -587,7 +620,7 @@ setMethod("resolveSubobject",
                 view@steps)
             subobj <- .apply_space_to_subobj(subobj, gobject, space, coordinator)
             for (step in crop_steps) {
-                subobj <- crop(subobj, step@region)
+                subobj <- crop(subobj, .materialize_crop_region(step@region))
             }
             return(subobj)
         }

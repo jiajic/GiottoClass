@@ -686,7 +686,13 @@ test_that("names(mg) <- renames children and refreshes id_map", {
     expect_error(names(mg) <- "a", "length")
 })
 
-test_that("names(mg) <- refuses when joint shared slots are populated", {
+test_that("names(mg) <- auto-rewrites joint shared slot keys", {
+    # Contract update: rename used to refuse when joint slots were
+    # populated. It now auto-rewrites the `sample::id` prefix across all
+    # affected joint slots (cell_metadata, expression, dimension_reduction,
+    # nn_network, spatial_enrichment, @cell_ID narrowing). The earlier
+    # refuse-behavior is gone — covered alongside the new rewrite tests
+    # in test-gmulti-structural-ops.R.
     g1 <- .mk_minimal(5, 4)
     mg <- createGiottoMulti(list(a = g1))
 
@@ -697,12 +703,13 @@ test_that("names(mg) <- refuses when joint shared slots are populated", {
     e[] <- mat
     mg@expression <- list(cell = list(rna = list(raw = e)))
 
-    expect_error(names(mg) <- "renamed", "populated")
-
-    # clearing the joint slot allows the rename
-    mg@expression <- NULL
-    names(mg) <- "renamed"
-    expect_identical(names(mg), "renamed")
+    names(mg) <- "A"
+    expect_identical(names(mg), "A")
+    # The colnames in the joint expression now reflect the new sample
+    # name; the original "a::" prefix is gone.
+    new_cn <- colnames(mg@expression$cell$rna$raw[])
+    expect_true(all(grepl("^A::", new_cn)))
+    expect_false(any(grepl("^a::", new_cn)))
 })
 
 test_that("pDataDT / fDataDT work on giottoMulti via assembly fallback", {

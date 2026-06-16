@@ -20,6 +20,7 @@
   y0 = 0,
   spat_unit = ":all:",
   feat_type = ":all:",
+  space = NULL,
   ...
 )
 

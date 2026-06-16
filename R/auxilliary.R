@@ -123,6 +123,14 @@ fDataDT <- function(gobject,
 #' @param cluster_column `character`. Cell metaadata column to map annotation
 #'  values based on.
 #' @param name new name for annotation column
+#' @param replace logical. When the target `name` column already exists in
+#' the cell metadata: if `TRUE` (default), the existing column is fully
+#' replaced by the new mapping (rows whose cluster value is NA or unmapped
+#' become NA). If `FALSE`, the mapping is applied additively — rows where
+#' the new mapping yields a non-NA value are overwritten, rows where it
+#' yields NA (cluster value NA or unmapped) keep their existing value.
+#' Useful for iterative annotation refinement. Has no effect when the
+#' column doesn't exist yet.
 #' @returns `giotto` object
 #' @details You need to specify which (cluster) column you want to annotate
 #' and you need to provide an annotation vector like this:
@@ -133,6 +141,11 @@ fDataDT <- function(gobject,
 #'   \item{3. provide original cluster names to previous vector,
 #'   e.g. names(cell_types) = c(2, 1, 3)}
 #' }
+#'
+#' NA values in `cluster_column` are tolerated and propagate to the new
+#' annotation column as NA — common on `giottoMulti` where joint
+#' `@cell_metadata` keeps the full population while the analysis pool
+#' (PCA / nnNet / clustering) is narrower.
 #' @examples
 #' g <- GiottoData::loadGiottoMini("visium")
 #'
@@ -157,7 +170,8 @@ annotateGiotto <- function(gobject,
     feat_type = NULL,
     annotation_vector = NULL,
     cluster_column = NULL,
-    name = "cell_types") {
+    name = "cell_types",
+    replace = TRUE) {
     # Set feat_type and spat_unit
     spat_unit <- set_default_spat_unit(
         gobject = gobject,
@@ -169,8 +183,7 @@ annotateGiotto <- function(gobject,
         feat_type = feat_type
     )
 
-    # data.table: set global variable
-    temp_cluster_name <- NULL
+    checkmate::assert_flag(replace)
 
     if (is.null(annotation_vector) || is.null(cluster_column)) {
         stop("\n You need to provide both a named annotation vector and
@@ -185,49 +198,51 @@ annotateGiotto <- function(gobject,
         copy_obj = TRUE
     )
 
-    # 1. verify if cluster column exist
+    # 1. verify if cluster column exists
     if (!cluster_column %in% colnames(cell_metadata[])) {
         stop("\n Cluster column is not found in cell metadata \n")
     }
 
-    # 2. verify if each cluster has an annotation
+    # 2. typo protection — warn (not error) about clusters with no mapping
+    # and about annotation_vector keys that match no cluster value. NAs in
+    # the cluster column are expected (analysis pool narrower than the
+    # joint metadata population on a giottoMulti) and pass through as NA.
     uniq_names <- names(annotation_vector)
     uniq_clusters <- unique(cell_metadata[][[cluster_column]])
+    uniq_clusters <- uniq_clusters[!is.na(uniq_clusters)]
     missing_annotations <- uniq_clusters[!uniq_clusters %in% uniq_names]
     no_matching_annotations <- uniq_names[!uniq_names %in% uniq_clusters]
-
-    # stop if not all clusters in cluster column got a mapped annotation value
-    if (length(missing_annotations) > 0) {
+    if (length(missing_annotations) > 0L) {
         wrap_msg(
-            "Not all clusters have an accompanying annotation in the
-            annotation_vector: \n", "These names are missing: ",
-            as.character(missing_annotations), "\n",
-            "These annotations have no match: ",
-            as.character(no_matching_annotations)
+            "Some clusters have no entry in annotation_vector and will be",
+            "set to NA in the new column: ",
+            paste(as.character(missing_annotations), collapse = ", ")
         )
-        stop("Annotation interrupted \n")
+    }
+    if (length(no_matching_annotations) > 0L) {
+        wrap_msg(
+            "Some annotation_vector keys do not match any cluster value",
+            "and will be ignored: ",
+            paste(as.character(no_matching_annotations), collapse = ", ")
+        )
     }
 
+    # 3. vectorized lookup — NA-safe: `vec[NA_character_]` returns NA,
+    # and `vec[<key not in names>]` also returns NA.
+    new_vals <- unname(annotation_vector[
+        as.character(cell_metadata[][[cluster_column]])
+    ])
 
-    # 3. remove previous annotation name if it's the same
-    # but only if new name is not the same as cluster to be used
-    if (name %in% colnames(cell_metadata[])) {
-        wrap_msg('annotation name "', name,
-            '" was already used and will be overwritten',
-            sep = ""
-        )
-
-        cell_metadata[][, temp_cluster_name := annotation_vector[[
-            as.character(get(cluster_column))
-        ]], by = seq_len(nrow(cell_metadata[]))]
-        cell_metadata[][, (name) := NULL]
+    # 4. write — full clobber by default, additive merge if replace=FALSE
+    # and the target column already exists.
+    if (name %in% colnames(cell_metadata[]) && isFALSE(replace)) {
+        existing <- cell_metadata[][[name]]
+        merged <- ifelse(is.na(new_vals), existing, new_vals)
+        cell_metadata[][, (name) := merged]
     } else {
-        cell_metadata[][, temp_cluster_name := annotation_vector[[
-            as.character(get(cluster_column))
-        ]], by = seq_len(nrow(cell_metadata[]))]
+        cell_metadata[][, (name) := new_vals]
     }
 
-    data.table::setnames(cell_metadata[], old = "temp_cluster_name", new = name)
     ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
     gobject <- setGiotto(gobject, cell_metadata,
         verbose = FALSE, initialize = FALSE
@@ -469,9 +484,10 @@ addCellMetadata <- function(gobject,
 
     # 2. format input metadata
     # [vector/factor input]
-    # Values are assumed to be in the same order as the existing metadata info.
-    # Convert vector or factor into a single-column data.table
+    # Convert vector or factor into a single-column data.table.
     # Colname is the variable name of the vector or factor.
+    # If `names(new_metadata)` are present, they're used as cell_IDs and the
+    # downstream path auto-routes to key-based merge (see step 2b below).
     # [all other inputs]
     # Coerce to data.table
     if (is.vector(new_metadata) || is.factor(new_metadata)) {
@@ -503,6 +519,33 @@ addCellMetadata <- function(gobject,
     # If no specific column_cell_ID is provided, assume "cell_ID"
     if (is.null(column_cell_ID)) {
         column_cell_ID <- "cell_ID"
+    }
+
+    # 2b. Auto-detect key-based input. If `new_metadata` carries a cell_ID
+    # column (from a named vector, an explicit `column_cell_ID`, or any DT/DF
+    # with a "cell_ID" column), route through the key-based merge path
+    # regardless of the caller's `by_column` value. This is the safe default —
+    # positional `cbind` is fragile on giottoMulti because joint `@cell_metadata`
+    # row order isn't guaranteed to match whatever order produced the input
+    # vector (see findScranMarkers-class bug). For single giotto with no key,
+    # we warn and fall through to positional for back-compat; for giottoMulti
+    # we error (no safe positional semantics).
+    has_key <- column_cell_ID %in% colnames(new_metadata)
+    if (has_key) {
+        by_column <- TRUE
+    } else if (!isTRUE(by_column)) {
+        if (inherits(gobject, "giottoMulti")) {
+            stop("addCellMetadata: positional input is not safe on a ",
+                "giottoMulti — name the vector with cell_IDs or pass a ",
+                "data.table/data.frame with a '", column_cell_ID,
+                "' column. Joint metadata row order is not guaranteed to ",
+                "match the order that produced this vector.",
+                call. = FALSE)
+        }
+        warning("addCellMetadata: input has no '", column_cell_ID,
+            "' column / names; falling back to positional cbind. ",
+            "Pass a named vector or a table with a cell_ID column for ",
+            "key-based alignment.", call. = FALSE)
     }
 
 
@@ -686,6 +729,28 @@ addFeatMetadata <- function(gobject,
         column_feat_ID <- "feat_ID"
     }
 
+    # Auto-detect key-based input — see `addCellMetadata` for the rationale.
+    # Feature axis is less prone to ordering drift than cell axis (joint
+    # @feat_metadata is typically deduped by feat_ID), but the discipline
+    # is the same: if a key column is present, prefer key-based merge.
+    has_key <- column_feat_ID %in% colnames(new_metadata)
+    if (has_key) {
+        by_column <- TRUE
+    } else if (!isTRUE(by_column)) {
+        if (inherits(gobject, "giottoMulti")) {
+            stop("addFeatMetadata: positional input is not safe on a ",
+                "giottoMulti — name the vector with feat_IDs or pass a ",
+                "data.table/data.frame with a '", column_feat_ID,
+                "' column. Joint feature metadata row order is not ",
+                "guaranteed to match the order that produced this vector.",
+                call. = FALSE)
+        }
+        warning("addFeatMetadata: input has no '", column_feat_ID,
+            "' column / names; falling back to positional cbind. ",
+            "Pass a named vector or a table with a feat_ID column for ",
+            "key-based alignment.", call. = FALSE)
+    }
+
 
     # 4. combine with existing metadata
     # get old and new meta colnames that are not the ID col
@@ -796,6 +861,17 @@ create_average_DT <- function(gobject,
     )
     myrownames <- rownames(expr_data)
 
+    # Alignment guard — on a giottoMulti the row order of cell_metadata
+    # is not guaranteed to match the column order of expr_data. Reorder
+    # cell_metadata by colnames(expr_data) so the logical mask below
+    # picks the correct cells per cluster.
+    ord <- match(colnames(expr_data), cell_metadata$cell_ID)
+    if (anyNA(ord)) {
+        stop("[create_average_DT] expression matrix columns and ",
+            "cell_metadata cell_IDs do not all match", call. = FALSE)
+    }
+    cell_metadata <- cell_metadata[ord, ]
+
     savelist <- list()
     for (group in unique(cell_metadata[[meta_data_name]])) {
         name <- paste0("cluster_", group)
@@ -866,6 +942,14 @@ create_average_detection_DT <- function(gobject,
         copy_obj = TRUE
     )
     myrownames <- rownames(expr_data)
+
+    # Alignment guard — see `create_average_DT` for rationale.
+    ord <- match(colnames(expr_data), cell_metadata$cell_ID)
+    if (anyNA(ord)) {
+        stop("[create_average_detection_DT] expression matrix columns and ",
+            "cell_metadata cell_IDs do not all match", call. = FALSE)
+    }
+    cell_metadata <- cell_metadata[ord, ]
 
     savelist <- list()
     for (group in unique(cell_metadata[[meta_data_name]])) {

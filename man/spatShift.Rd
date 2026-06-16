@@ -23,7 +23,8 @@
   dy = 0,
   spat_unit = ":all:",
   feat_type = ":all:",
-  images = ":all:"
+  images = ":all:",
+  space = NULL
 )
 
 \S4method{spatShift}{SpatExtent}(x, dx = 0, dy = 0)

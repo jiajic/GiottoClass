@@ -203,18 +203,26 @@ setMethod("ext", signature("giotto"), function(x,
 
         # catch multiple object inputs (images)
         if (inherits(spat_obj, "list")) {
-            elist <- lapply(spat_obj, ext)
-            e <- Reduce(`+`, elist)
-        } else {
-            e <- ext(spat_obj)
+            elist <- lapply(spat_obj, function(o) tryCatch(ext(o),
+                error = function(e) NULL))
+            elist <- Filter(Negate(is.null), elist)
+            if (length(elist) == 0L) return(NULL)
+            return(Reduce(`+`, elist))
         }
-        return(e)
+        # tryCatch so an empty subobject (e.g. polygon narrowed to 0 rows
+        # by a view's crop) returns NULL instead of an "invalid extent"
+        # error that aborts the whole reduction.
+        tryCatch(ext(spat_obj), error = function(e) NULL)
     })
 
-    # reduce when more than one data_type is queried
-    e <- Reduce(`+`, elist2)
-
-    return(e)
+    # reduce when more than one data_type is queried, ignoring any empty
+    # sources that returned NULL above.
+    elist2 <- Filter(Negate(is.null), elist2)
+    if (length(elist2) == 0L) {
+        vmsg(.v = verbose, "No non-empty spatial extents in giotto object")
+        return(invisible())
+    }
+    Reduce(`+`, elist2)
 })
 
 #' @rdname ext

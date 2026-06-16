@@ -86,7 +86,10 @@ test_that("crop() with polygon region works", {
     ), type = "polygons")
     v <- giottoView() |> crop(poly)
     expect_s4_class(v@steps[[1L]], "viewCrop")
-    expect_s4_class(v@steps[[1L]]@region, "SpatVector")
+    # SpatVector polygon regions are normalized to WKT at ingest so the
+    # recipe is serializable (no live C++ pointer). See methods-view.R
+    # .normalize_crop_region.
+    expect_type(v@steps[[1L]]@region, "character")
 })
 
 test_that("materialize with polygon crop narrows by region", {
@@ -494,10 +497,10 @@ test_that(".cached_surviving_cell_ids memoises within a cache env", {
     v <- giottoView() |> subset(leiden_clus == "1")
     cache <- GiottoClass:::.new_resolver_cache()
 
-    a <- GiottoClass:::.cached_surviving_cell_ids(g, v, NULL,
+    a <- GiottoClass:::.cached_surviving_cell_ids(g, v,
         dataTableCoordinator(), cache)
     expect_true(exists("surviving_ids", envir = cache))
-    b <- GiottoClass:::.cached_surviving_cell_ids(g, v, NULL,
+    b <- GiottoClass:::.cached_surviving_cell_ids(g, v,
         dataTableCoordinator(), cache)
     expect_identical(a, b)
 })
@@ -505,7 +508,7 @@ test_that(".cached_surviving_cell_ids memoises within a cache env", {
 test_that(".cached_surviving_cell_ids with NULL cache works", {
     g <- .fixture_giotto()
     v <- giottoView() |> subset(leiden_clus == "1")
-    ids <- GiottoClass:::.cached_surviving_cell_ids(g, v, NULL,
+    ids <- GiottoClass:::.cached_surviving_cell_ids(g, v,
         dataTableCoordinator(), NULL)
     expect_type(ids, "character")
     expect_equal(length(ids), sum(pDataDT(g)$leiden_clus == "1"))

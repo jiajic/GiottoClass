@@ -795,6 +795,10 @@ giottoToAnnData <- function(
 
 
     adata_list <- lapply(seq_len(su_ft_length), function(i) adata)
+    # Per-adata cell_ID order, captured at X creation time. Used to
+    # reorder cmeta / spatial_locs before they're attached so they align
+    # with X positionally (anndata's obs aligns to X rows by position).
+    adata_cell_ids <- vector("list", su_ft_length)
     adata_pos <- 1
 
     for (su in spat_unit) {
@@ -815,6 +819,7 @@ giottoToAnnData <- function(
                         output = "matrix"
                     )
 
+                    adata_cell_ids[[adata_pos]] <- colnames(raw_x)
                     adata <- ad_obj(x = raw_x)
                 } else {
                     ad_layer_name <- paste0(su, "_", ft, "_", en)
@@ -852,6 +857,18 @@ giottoToAnnData <- function(
                 output = "data.table",
                 spat_unit = su
             )
+
+            # Alignment guard — AnnData.obs is row-positional against
+            # AnnData.X columns. Reorder spatial_locs to the cell_ID order
+            # captured when X was attached, then drop the cell_ID column.
+            ad_ids <- adata_cell_ids[[adata_pos]]
+            ord <- match(ad_ids, sl$cell_ID)
+            if (anyNA(ord)) {
+                stop("[giottoToAnnData] spatial_locs cell_IDs do not all ",
+                    "match X column cell_IDs", call. = FALSE)
+            }
+            sl <- sl[ord, ]
+
             n_col_sl <- dim(sl)[2]
 
             # preallocate data.table params
@@ -886,6 +903,17 @@ giottoToAnnData <- function(
                 output = "data.table",
                 set_defaults = FALSE
             )
+
+            # Alignment guard — AnnData.obs is row-positional against
+            # AnnData.X columns. Reorder cell_metadata to the cell_ID
+            # order captured when X was attached.
+            ad_ids <- adata_cell_ids[[adata_pos]]
+            ord <- match(ad_ids, cmeta$cell_ID)
+            if (anyNA(ord)) {
+                stop("[giottoToAnnData] cell_metadata cell_IDs do not all ",
+                    "match X column cell_IDs", call. = FALSE)
+            }
+            cmeta <- cmeta[ord, ]
 
             fm <- getFeatureMetadata(
                 gobject = gobject,
@@ -2845,6 +2873,10 @@ giottoToSpatialExperiment <- function(gobject,
             )
             names(rownames(exprMat)) <- NULL
             names(colnames(exprMat)) <- NULL
+            # Capture the SPE column order — used below to align pData
+            # and spatialCoords. SPE colData / spatialCoords are
+            # row-positional against assay columns.
+            spe_cell_ids <- colnames(exprMat)
             exprMat <- list(exprMat)
             names(exprMat)[1] <- giottoExpr[1]$name
             # Creating SPE object with first expression matrix
@@ -2899,6 +2931,14 @@ giottoToSpatialExperiment <- function(gobject,
                     spatialUnits[su], "'"
                 )
             }
+            # Alignment guard — SPE colData is row-positional against
+            # assay columns. Reorder pData to assay column order.
+            ord <- match(spe_cell_ids, pData$cell_ID)
+            if (anyNA(ord)) {
+                stop("[giottoToSpatialExperiment] pData cell_IDs do not ",
+                    "all match assay column cell_IDs", call. = FALSE)
+            }
+            pData <- pData[ord, ]
             SummarizedExperiment::colData(spe) <- S4Vectors::DataFrame(
                 pData,
                 row.names = pData$cell_ID
@@ -2938,6 +2978,16 @@ giottoToSpatialExperiment <- function(gobject,
                     spatialUnits[su], "'"
                 )
             }
+            # Alignment guard — SPE spatialCoords are row-positional
+            # against assay columns. Reorder spatialLocs to assay
+            # column order before stripping the cell_ID column.
+            ord <- match(spe_cell_ids, spatialLocs$cell_ID)
+            if (anyNA(ord)) {
+                stop("[giottoToSpatialExperiment] spatial_locs cell_IDs ",
+                    "do not all match assay column cell_IDs",
+                    call. = FALSE)
+            }
+            spatialLocs <- spatialLocs[ord, ]
             if (all(colnames(spatialLocs[, seq_along(2)]) == c("sdimx", "sdimy"))) {
                 spatialLocs <- spatialLocs[, c("sdimx", "sdimy"), drop = FALSE]
             } else {

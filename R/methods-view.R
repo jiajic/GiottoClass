@@ -40,7 +40,7 @@ NULL
 #     is a character name
 #   - the modified giottoView object when `view` is a recipe (caller
 #     continues building before slotting later)
-.record_view_on_gobject <- function(gobject, view, step) {
+.record_view_on_gobject <- function(gobject, view, step, space = NULL) {
     # view contract: character(1) name of a slotted view, or NULL.
     # Inline giottoView objects were considered and rejected (see
     # vignettes/DESIGN_gmulti_federation.md). If programmatic composition
@@ -54,6 +54,7 @@ NULL
     } else {
         giottoView()
     }
+    existing <- .view_bind_space(existing, space)
     new_view <- .view_record_step(existing, step)
     giottoView(gobject, view) <- new_view
     gobject
@@ -153,11 +154,75 @@ setMethod("subset", signature(x = "giottoView"),
 #'   `"disjoint"`. Passed through to [terra::is.related].
 #' @export
 setMethod("crop", signature(x = "giottoView", y = "ANY"),
-    function(x, y, relation = "intersects", ...) {
+    function(x, y, relation = "intersects", ..., space = NULL) {
         checkmate::assert_character(relation, len = 1L, any.missing = FALSE)
-        .view_record_step(x, new("viewCrop", region = y, relation = relation))
+        x <- .view_bind_space(x, space)
+        region <- .normalize_crop_region(y)
+        .view_record_step(x, new("viewCrop", region = region,
+            relation = relation))
     }
 )
+
+
+# Normalize crop region to a serialization-friendly form. Recipes carry
+# only numeric AABB vectors (length 4) or WKT character. terra objects
+# (SpatExtent / SpatVector) hold C++ pointers that don't survive saveRDS,
+# so we convert at ingest — once — instead of at every resolve.
+#
+# Substrates accept the stored form directly:
+#   - numeric: `terra::ext()` / `terra::intersect()` consume it natively,
+#     and the in-memory AABB fast path uses it as-is.
+#   - WKT: deserialize via `.materialize_crop_region()` at the
+#     recipe-to-substrate boundary.
+#' @keywords internal
+#' @noRd
+.normalize_crop_region <- function(y) {
+    if (is.numeric(y)) {
+        checkmate::assert_numeric(y, len = 4L, any.missing = FALSE)
+        return(as.numeric(y))
+    }
+    if (inherits(y, "SpatExtent")) {
+        return(as.numeric(y[]))
+    }
+    if (inherits(y, "SpatVector")) {
+        return(terra::geom(y, wkt = TRUE))
+    }
+    stop("[crop] region must be numeric(4), SpatExtent, or SpatVector ",
+        "(got '", class(y)[[1L]], "')", call. = FALSE)
+}
+
+
+# Deserialize a stored crop region for substrate consumers. Numeric
+# (AABB) pass-through; WKT character becomes a SpatVector. Called at
+# the boundary where the recipe hands off to terra-backed crop machinery
+# or the in-memory relate path.
+#' @keywords internal
+#' @noRd
+.materialize_crop_region <- function(r) {
+    if (is.character(r) && length(r) > 0L) return(terra::vect(r))
+    r
+}
+
+
+# Bind a view to a named space. First call sets @space; later calls with
+# the same name are a no-op; later calls with a different name error.
+# `space = NULL` is a no-op (leave whatever's there).
+.view_bind_space <- function(view, space) {
+    if (is.null(space)) return(view)
+    checkmate::assert_character(space, len = 1L, any.missing = FALSE)
+    cur <- view@space
+    if (is.na(cur)) {
+        view@space <- space
+        return(view)
+    }
+    if (!identical(cur, space)) {
+        stop("view is already bound to space '", cur, "'; ",
+            "cannot rebind to '", space, "'. ",
+            "Build a fresh view if a different frame is needed.",
+            call. = FALSE)
+    }
+    view
+}
 
 
 # selectSamples() — gmulti-only sample selector ####
@@ -400,9 +465,12 @@ setGeneric("materialize",
     if (is.null(coordinator)) {
         coordinator <- .default_view_coordinator(gobject)
     }
-    # Normalise space to a giottoSpace (or NULL) once at the entry
-    # point so per-subobject resolution doesn't re-look-up by name
-    space_obj <- .resolve_view_space(gobject, view, space)
+    # Normalise output space to a giottoSpace (or NULL) once at the
+    # entry point so per-subobject resolution doesn't re-look-up by
+    # name. The predicate space (view@space) is consulted independently
+    # by the crop step handlers — it is no longer conflated with output
+    # here.
+    space_obj <- .resolve_space(gobject, space)
     # Per-call cache shared across all slot walks within this
     # materialize. surviving_cell_ids computed at most once per call.
     cache <- .new_resolver_cache()
@@ -461,7 +529,7 @@ setMethod("materialize",
     if (is.null(coordinator)) {
         coordinator <- .default_view_coordinator(gobject)
     }
-    space_obj <- .resolve_view_space(gobject, view, space)
+    space_obj <- .resolve_space(gobject, space)
     cache <- .new_resolver_cache()
 
     # Resolve selectSamples FIRST — narrow children before any
@@ -620,8 +688,10 @@ setMethod("show", signature("viewStep"), function(object) {
     if (inherits(step, "viewCrop")) {
         rel <- if (identical(step@relation, "intersects")) ""
             else sprintf(" [%s]", step@relation)
-        region_lbl <- if (inherits(step@region, "SpatVector")) {
-            sprintf("<SpatVector: %d geoms>", length(step@region))
+        region_lbl <- if (is.character(step@region)) {
+            n <- length(step@region)
+            sprintf("<WKT polygon%s>",
+                if (n == 1L) "" else sprintf(": %d geoms", n))
         } else {
             tryCatch(deparse(step@region, nlines = 1L)[[1L]],
                 error = function(e) "<region>")

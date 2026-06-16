@@ -95,6 +95,83 @@ v
 `"intersects"` (default), `"within"`, `"contains"`, `"covers"`,
 `"covered_by"`, `"overlaps"`, `"touches"`, `"crosses"`, `"disjoint"`.
 
+`crop()` is not limited to rectangular extents — any geometry that
+`terra::is.related()` can evaluate against is accepted. Pass a
+`SpatVector` polygon (or an `sf` polygon, WKT, etc.) directly as `y`,
+and the same `relation` vocabulary applies:
+
+```{r}
+# Build an arbitrary ROI polygon (or pull one from gobject@spatial_info,
+# a hand-drawn annotation, an imported GeoJSON, ...)
+roi <- terra::vect(
+    matrix(c(6500, -4500,
+             7100, -4400,
+             6900, -4000,
+             6500, -4200,
+             6500, -4500), ncol = 2, byrow = TRUE),
+    type = "polygons"
+)
+
+v <- giottoView() |>
+    crop(roi, relation = "within")   # cells whose centroid is inside roi
+```
+
+Bbox crops take an AABB short-circuit at resolution time; non-rectangular
+regions fall through to `terra::is.related()`. Geometry of surviving
+subobjects is not modified — only the cell set narrows.
+
+The indirect-usage form (`view = `) works on `crop()` too — same pattern
+as `subset()` below — for recording a polygon filter directly onto a
+slotted view without first building a standalone recipe:
+
+```{r, eval=FALSE}
+g <- crop(g, roi, relation = "within", view = "stripe1")
+g <- subset(g, total_expr > 1, view = "stripe1")  # appends to the same view
+```
+
+Note that eager `crop()` on a `giotto` / `giottoMulti` is **not**
+implemented — it would require coordinated narrowing of every spatial
+subobject, images, expression, and metadata. The `view = ` path is
+mandatory for now; an eager call errors with a pointer to either the
+recipe form or the indirect form.
+
+### Predicate frame vs output frame
+
+A view's `crop()` can carry an additional `space = ` arg that binds the
+view's `@space` slot — the **frame the crop region is interpreted in**.
+This is a separate concern from any output frame the consumer might
+request:
+
+```{r, eval=FALSE}
+# Crop region drawn in "rotate" coords; binds view@space.
+g <- crop(g, ext(3000, 4000, -3000, -2000), view = "test", space = "rotate")
+
+# Default: predicate uses "rotate" frame to decide cells, output stays
+# in NATIVE frame.
+getSpatialLocations(g, view = "test")            # native coords, narrowed
+
+# Explicit: predicate uses "rotate" frame, output also in "rotate" frame.
+getSpatialLocations(g, view = "test", space = "rotate")  # rotated coords
+```
+
+The two arguments are independent:
+
+| | source | what it affects |
+|---|---|---|
+| **Predicate frame** | `view@space` (set by `crop(..., space = "name")`) | how the recorded crop region is interpreted |
+| **Output frame** | explicit `space = ` arg on the getter | what frame the returned coordinates are in |
+
+`view@space` is read at the crop step and used to project the region
+into whatever the output frame turns out to be — getters that don't
+pass `space = ` keep returning native-frame coords. The behavior is
+identical across `getSpatialLocations` / `getCellMetadata` /
+`getPolygonInfo` / `getExpression`: same recipe, same cell set.
+
+Note the arg overload: `space = ` on `crop()` binds the view's
+predicate frame; `space = ` on transform verbs (`spin()`, `affine()`,
+…) records the transform as a step onto the named space recipe. Same
+referent (the slotted space `"name"`), different operation per verb.
+
 ### Sample selection (giottoMulti only)
 
 When the view will be applied to a `giottoMulti`, `selectSamples()` records
