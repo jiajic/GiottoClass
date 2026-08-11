@@ -15,3 +15,11 @@ pkgdown
 # test output artifacts
 tests/testthat/Rplots.pdf
 tests/testthat/*.pdf
+
+# agent-private scratch (shipped doc lives in AGENTS.md)
+CLAUDE.md
+
+# rendered articles (build artifacts; only the .Rmd is tracked)
+vignettes/articles/*.html
+vignettes/articles/*_files/
+vignettes/articles/*_cache/

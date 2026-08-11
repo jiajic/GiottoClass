@@ -12,3 +12,6 @@ test
 ^\.positai$
 ^\.claude$
 ^adr$
+^AGENTS\.md$
+^CLAUDE\.md$
+^vignettes/articles$
