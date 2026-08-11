@@ -9,7 +9,7 @@ test_that("hnswKNN returns the same shape as dbscan::kNN", {
     m <- .nn_mat()
     k <- 15L
 
-    hn <- hnswKNN(m, k = k)
+    hn <- GiottoClass:::hnswKNN(m, k = k)
     ex <- dbscan::kNN(m, k = k, sort = TRUE)
 
     expect_identical(class(hn), class(ex))
@@ -22,7 +22,7 @@ test_that("hnswKNN returns the same shape as dbscan::kNN", {
 
 test_that("hnswKNN excludes self and returns sorted distances", {
     m <- .nn_mat()
-    hn <- hnswKNN(m, k = 10L)
+    hn <- GiottoClass:::hnswKNN(m, k = 10L)
 
     expect_false(any(hn$id == seq_len(nrow(m))))
     expect_true(all(apply(hn$dist, 1L, function(r) !is.unsorted(r))))
@@ -35,7 +35,7 @@ test_that("hnswKNN drops the correct entry when self is not column 1", {
     m <- .nn_mat(n = 100L, d = 5L)
     md <- rbind(m, m) # every row has an exact duplicate
 
-    hn <- hnswKNN(md, k = 5L)
+    hn <- GiottoClass:::hnswKNN(md, k = 5L)
 
     expect_false(any(hn$id == seq_len(nrow(md))))
     expect_identical(dim(hn$id), c(nrow(md), 5L))
@@ -46,7 +46,7 @@ test_that("hnswKNN recall is high against exact search", {
     m <- .nn_mat(n = 1000L, d = 15L)
     k <- 20L
 
-    hn <- hnswKNN(m, k = k)
+    hn <- GiottoClass:::hnswKNN(m, k = k)
     ex <- dbscan::kNN(m, k = k, sort = TRUE)
     recall <- mean(vapply(seq_len(nrow(m)), function(i) {
         length(intersect(hn$id[i, ], ex$id[i, ])) / k
@@ -59,12 +59,15 @@ test_that("hnswKNN is reproducible at the default n_threads", {
     # The default is serial precisely because hnswlib's index build is only
     # reproducible single-threaded. If this ever fails, the default changed.
     m <- .nn_mat(n = 800L, d = 12L)
-    expect_identical(hnswKNN(m, k = 10L), hnswKNN(m, k = 10L))
+    expect_identical(
+        GiottoClass:::hnswKNN(m, k = 10L),
+        GiottoClass:::hnswKNN(m, k = 10L)
+    )
 })
 
 test_that("dbscan::sNN consumes an hnswKNN result", {
     m <- .nn_mat()
-    hn <- hnswKNN(m, k = 15L)
+    hn <- GiottoClass:::hnswKNN(m, k = 15L)
 
     snn <- dbscan::sNN(x = hn, k = 15L, kt = NULL)
     expect_true(all(c("shared", "id", "dist") %in% names(snn)))
@@ -73,7 +76,7 @@ test_that("dbscan::sNN consumes an hnswKNN result", {
 
 test_that("hnswKNN rejects k >= nrow(x)", {
     m <- .nn_mat(n = 20L)
-    expect_error(hnswKNN(m, k = 20L), "must be less than")
+    expect_error(GiottoClass:::hnswKNN(m, k = 20L), "must be less than")
 })
 
 test_that("engine resolution follows the declared space", {

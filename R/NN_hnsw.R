@@ -60,13 +60,9 @@
 #' @returns object of class `c("kNN", "NN")` with elements `id` (integer
 #'   matrix, `nrow(x)` x `k`), `dist` (numeric matrix, same shape), `k`,
 #'   `sort` and `metric`.
-#' @examples
-#' \dontrun{
-#' m <- matrix(rnorm(1000 * 20), nrow = 1000)
-#' nn <- hnswKNN(m, k = 30)
-#' str(nn$id)
-#' }
-#' @export
+#' @keywords internal
+#' @seealso [RcppHNSW::hnsw_knn()] for direct use of the underlying library;
+#'   this wrapper exists only to match `dbscan::kNN()`'s return shape.
 hnswKNN <- function(x,
     k,
     distance = c("euclidean", "cosine", "l2", "ip"),

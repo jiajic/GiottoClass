@@ -122,7 +122,8 @@ setClass("delaunayNetworkParam",
 #'   `"dbscan"` or `"hnsw"`. `"dbscan"` is an exact kd-tree search -- optimal
 #'   on the 2-3 dimensions of a spatial network, and degrading toward brute
 #'   force as dimensionality rises. `"hnsw"` is an approximate HNSW index
-#'   ([hnswKNN()]) whose cost is insensitive to dimensionality, making it much
+#'   (hnswlib, via \pkg{RcppHNSW}) whose cost is insensitive to dimensionality,
+#'   making it much
 #'   faster in the 10-1000 dimensions of an expression-space network. `"auto"`
 #'   leaves the choice to the caller that knows which space the network is
 #'   built in; see [createNetwork()].
@@ -670,7 +671,7 @@ setMethod("createNetwork", signature("giotto", "delaunayNetworkParam"),
         if (!inherits(nn_network, "kNN")) {
             stop(wrap_txt(errWidth = TRUE,
                 "[createNetwork] `nn_network` must be a kNN object, as
-                returned by dbscan::kNN() or hnswKNN()."
+                returned by dbscan::kNN()."
             ), call. = FALSE)
         }
         if (ncol(nn_network$id) < k) {
@@ -977,12 +978,13 @@ edge_distances <- function(x, y, x_node_ids = NULL) {
 #' @param engine character. kNN search backend, one of `"auto"` (default),
 #'   `"dbscan"` or `"hnsw"`. This function builds a network in expression
 #'   space, so `"auto"` resolves to `"hnsw"` -- an approximate HNSW index
-#'   ([hnswKNN()]), whose cost does not grow with dimensionality the way an
-#'   exact kd-tree search does. Pass `"dbscan"` for an exact search.
+#'   (hnswlib, via \pkg{RcppHNSW}), whose cost does not grow with
+#'   dimensionality the way an exact kd-tree search does. Pass `"dbscan"` for
+#'   an exact search.
 #' @param verbose be verbose
 #' @param ... additional parameters for the search backend selected by
-#'   `engine` -- [dbscan::kNN()] or [hnswKNN()] -- and, for `type = "sNN"`,
-#'   for `dbscan::sNN()`
+#'   `engine` -- [dbscan::kNN()] or [RcppHNSW::hnsw_knn()] -- and, for
+#'   `type = "sNN"`, for `dbscan::sNN()`
 #' @returns giotto object with updated NN network
 #' @details This function creates a k-nearest neighbour (kNN) or shared
 #' nearest neighbour (sNN) network based on the provided dimension reduction

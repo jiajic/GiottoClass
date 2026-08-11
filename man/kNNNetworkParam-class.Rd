@@ -37,7 +37,8 @@ kNNNetworkParam(
 \code{"dbscan"} or \code{"hnsw"}. \code{"dbscan"} is an exact kd-tree search -- optimal
 on the 2-3 dimensions of a spatial network, and degrading toward brute
 force as dimensionality rises. \code{"hnsw"} is an approximate HNSW index
-(\code{\link[GiottoDisk:hnswKNN]{hnswKNN()}}) whose cost is insensitive to dimensionality, making it much
+(hnswlib, via \pkg{RcppHNSW}) whose cost is insensitive to dimensionality,
+making it much
 faster in the 10-1000 dimensions of an expression-space network. \code{"auto"}
 leaves the choice to the caller that knows which space the network is
 built in; see \code{\link[=createNetwork]{createNetwork()}}.}

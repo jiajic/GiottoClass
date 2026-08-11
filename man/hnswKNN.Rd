@@ -59,10 +59,8 @@ HNSW is \emph{approximate}: recall is high but not guaranteed to be 1.0. Use
 dimensions of a spatial network, where an exact kd-tree is both faster and
 exact.
 }
-\examples{
-\dontrun{
-m <- matrix(rnorm(1000 * 20), nrow = 1000)
-nn <- hnswKNN(m, k = 30)
-str(nn$id)
+\seealso{
+\code{\link[RcppHNSW:hnsw_knn]{RcppHNSW::hnsw_knn()}} for direct use of the underlying library;
+this wrapper exists only to match \code{dbscan::kNN()}'s return shape.
 }
-}
+\keyword{internal}

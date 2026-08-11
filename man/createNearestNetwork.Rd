@@ -57,14 +57,15 @@ createNearestNetwork(
 \item{engine}{character. kNN search backend, one of \code{"auto"} (default),
 \code{"dbscan"} or \code{"hnsw"}. This function builds a network in expression
 space, so \code{"auto"} resolves to \code{"hnsw"} -- an approximate HNSW index
-(\code{\link[GiottoDisk:hnswKNN]{hnswKNN()}}), whose cost does not grow with dimensionality the way an
-exact kd-tree search does. Pass \code{"dbscan"} for an exact search.}
+(hnswlib, via \pkg{RcppHNSW}), whose cost does not grow with
+dimensionality the way an exact kd-tree search does. Pass \code{"dbscan"} for
+an exact search.}
 
 \item{verbose}{be verbose}
 
 \item{...}{additional parameters for the search backend selected by
-\code{engine} -- \code{\link[dbscan:kNN]{dbscan::kNN()}} or \code{\link[GiottoDisk:hnswKNN]{hnswKNN()}} -- and, for \code{type = "sNN"},
-for \code{dbscan::sNN()}}
+\code{engine} -- \code{\link[dbscan:kNN]{dbscan::kNN()}} or \code{\link[RcppHNSW:hnsw_knn]{RcppHNSW::hnsw_knn()}} -- and, for
+\code{type = "sNN"}, for \code{dbscan::sNN()}}
 }
 \value{
 giotto object with updated NN network
