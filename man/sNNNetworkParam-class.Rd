@@ -14,7 +14,7 @@ sNNNetworkParam(
   include_weight = TRUE,
   include_distance = TRUE,
   output = c("auto", "data.table", "igraph", "parquet"),
-  engine = c("dbscan", "hnsw")
+  engine = c("auto", "dbscan", "hnsw")
 )
 }
 \arguments{
@@ -30,12 +30,10 @@ sNNNetworkParam(
 
 \item{output}{one of \code{"auto"}, \code{"data.table"}, \code{"igraph"}, \code{"parquet"}}
 
-\item{engine}{character. kNN search backend. \code{"dbscan"} (default) is exact
-and single-threaded. \code{"hnsw"} uses an approximate HNSW index via
-\code{GiottoDisk::hnswKNN()} -- multithreaded and far faster at PCA
-dimensionality, at the cost of recall slightly below 1 and results that
-can shift with thread count. Requires \pkg{GiottoDisk} and
-\pkg{RcppHNSW}.}
+\item{engine}{character. kNN search backend used for the search half of the
+sNN build, one of \code{"auto"} (default), \code{"dbscan"} or \code{"hnsw"}. See
+\code{\link[=kNNNetworkParam]{kNNNetworkParam()}}. The shared-neighbour counting itself is always
+\code{dbscan::sNN()} and is unaffected by this choice.}
 }
 \description{
 Constructor and class for shared-Nearest-Neighbour network parameters.

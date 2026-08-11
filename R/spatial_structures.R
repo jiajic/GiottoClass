@@ -429,7 +429,10 @@ createSpatialKNNnetwork <- function(gobject,
         filter = TRUE,
         maximum_distance = maximum_distance,
         minimum_k = minimum_k,
-        output = "igraph"
+        output = "igraph",
+        # spatial coordinates are 2-3 dimensional, where an exact kd-tree
+        # search is optimal and an HNSW index never amortizes its build
+        engine = "dbscan"
     )
     g_net <- createNetwork(coords, param,
         node_ids = node_ids, verbose = verbose, ...

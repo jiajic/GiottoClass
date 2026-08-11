@@ -118,12 +118,14 @@ setClass("delaunayNetworkParam",
 #' @param minimum_k minimum neighbours per node when filtering
 #' @param weight_fun function mapping distance to weight
 #' @param include_weight,include_distance include columns in output
-#' @param engine character. kNN search backend. `"dbscan"` (default) is exact
-#'   and single-threaded. `"hnsw"` uses an approximate HNSW index via
-#'   `GiottoDisk::hnswKNN()` -- multithreaded and far faster at PCA
-#'   dimensionality, at the cost of recall slightly below 1 and results that
-#'   can shift with thread count. Requires \pkg{GiottoDisk} and
-#'   \pkg{RcppHNSW}.
+#' @param engine character. kNN search backend, one of `"auto"` (default),
+#'   `"dbscan"` or `"hnsw"`. `"dbscan"` is an exact kd-tree search -- optimal
+#'   on the 2-3 dimensions of a spatial network, and degrading toward brute
+#'   force as dimensionality rises. `"hnsw"` is an approximate HNSW index
+#'   ([hnswKNN()]) whose cost is insensitive to dimensionality, making it much
+#'   faster in the 10-1000 dimensions of an expression-space network. `"auto"`
+#'   leaves the choice to the caller that knows which space the network is
+#'   built in; see [createNetwork()].
 #' @param output one of `"auto"`, `"data.table"`, `"igraph"`, `"parquet"`
 #' @export
 kNNNetworkParam <- function(k = 30L, filter = FALSE,
@@ -131,7 +133,7 @@ kNNNetworkParam <- function(k = 30L, filter = FALSE,
         weight_fun = function(d) 1 / (1 + d),
         include_weight = TRUE, include_distance = TRUE,
         output = c("auto", "data.table", "igraph", "parquet"),
-        engine = c("dbscan", "hnsw")) {
+        engine = c("auto", "dbscan", "hnsw")) {
     output <- match.arg(output)
     engine <- match.arg(engine)
     new("kNNNetworkParam",
@@ -152,19 +154,17 @@ kNNNetworkParam <- function(k = 30L, filter = FALSE,
 #' @param minimum_shared keep edges with at least this many shared neighbours
 #' @param weight_fun function mapping distance to weight
 #' @param include_weight,include_distance include columns in output
-#' @param engine character. kNN search backend. `"dbscan"` (default) is exact
-#'   and single-threaded. `"hnsw"` uses an approximate HNSW index via
-#'   `GiottoDisk::hnswKNN()` -- multithreaded and far faster at PCA
-#'   dimensionality, at the cost of recall slightly below 1 and results that
-#'   can shift with thread count. Requires \pkg{GiottoDisk} and
-#'   \pkg{RcppHNSW}.
+#' @param engine character. kNN search backend used for the search half of the
+#'   sNN build, one of `"auto"` (default), `"dbscan"` or `"hnsw"`. See
+#'   [kNNNetworkParam()]. The shared-neighbour counting itself is always
+#'   `dbscan::sNN()` and is unaffected by this choice.
 #' @param output one of `"auto"`, `"data.table"`, `"igraph"`, `"parquet"`
 #' @export
 sNNNetworkParam <- function(k = 30L, top_shared = 3L, minimum_shared = 5L,
         weight_fun = function(d) 1 / (1 + d),
         include_weight = TRUE, include_distance = TRUE,
         output = c("auto", "data.table", "igraph", "parquet"),
-        engine = c("dbscan", "hnsw")) {
+        engine = c("auto", "dbscan", "hnsw")) {
     output <- match.arg(output)
     engine <- match.arg(engine)
     new("sNNNetworkParam",
@@ -503,6 +503,13 @@ setMethod("createNetwork", signature("giotto", "NNNetworkParam"),
         space <- match.arg(space)
         spat_unit <- set_default_spat_unit(x, spat_unit = spat_unit)
 
+        # `space` already declares which space the neighbourhood is defined in,
+        # which is exactly what picks the kNN engine. Fill it in when the param
+        # was built without one -- an explicit engine is always honoured.
+        if (identical(param@engine, "auto")) {
+            param@engine <- if (space == "spatial") "dbscan" else "hnsw"
+        }
+
         if (space == "spatial") {
             sl <- getSpatialLocations(x,
                 spat_unit = spat_unit,
@@ -550,19 +557,27 @@ setMethod("createNetwork", signature("giotto", "delaunayNetworkParam"),
 # x input is a matrix
 # kNN search backend.
 #
-# "dbscan" is exact and single-threaded. "hnsw" delegates to GiottoDisk's
-# HNSW index, which is approximate but multithreaded and does not degrade
-# with dimensionality the way a kd-tree does -- the dominant cost of
-# createNearestNetwork() at PCA dimensionality. Both return the same
-# `c("kNN", "NN")` shape, so everything downstream is identical.
-.nn_search <- function(x, k, engine = c("dbscan", "hnsw"), ...) {
+# The two engines trade against dimensionality, not against each other in
+# general. "dbscan" is an exact kd-tree search: optimal at the 2-3 dimensions
+# of a spatial network, degrading toward brute force as dimensionality rises.
+# "hnsw" builds an approximate HNSW index whose cost is insensitive to
+# dimensionality, so it wins by an order of magnitude at the 10-1000
+# dimensions of an expression-space network but never amortizes its index
+# build on 2D coordinates. Both return the same `c("kNN", "NN")` shape, so
+# everything downstream is identical.
+#
+# "auto" means the caller did not declare a space. Callers that know theirs
+# resolve it before reaching here (see createNetwork() and
+# createSpatialKNNnetwork()); a bare matrix carries no such context, so the
+# fallback assumes the dimensionality that a plain matrix of embeddings
+# usually has.
+.nn_search <- function(x, k, engine = c("auto", "dbscan", "hnsw"), ...) {
     engine <- match.arg(engine)
+    if (identical(engine, "auto")) engine <- "hnsw"
     if (identical(engine, "dbscan")) {
         return(dbscan::kNN(x = x, k = k, sort = TRUE, ...))
     }
-    package_check("GiottoDisk",
-        repository = "github:giotto-suite/GiottoDisk")
-    GiottoDisk::hnswKNN(x = x, k = k, ...)
+    hnswKNN(x = x, k = k, ...)
 }
 
 
@@ -571,7 +586,7 @@ setMethod("createNetwork", signature("giotto", "delaunayNetworkParam"),
         filter = FALSE,
         maximum_distance = NULL, minimum_k = 0L,
         weight_fun = function(d) 1 / (1 + d),
-        engine = c("dbscan", "hnsw"),
+        engine = c("auto", "dbscan", "hnsw"),
         verbose = NULL, ...) {
     # NSE vars
     from <- to <- distance <- NULL
@@ -629,7 +644,7 @@ setMethod("createNetwork", signature("giotto", "delaunayNetworkParam"),
         x, k = 30L, include_weight = TRUE, include_distance = TRUE,
         top_shared = 3L, minimum_shared = 5L,
         weight_fun = function(d) 1 / (1 + d),
-        engine = c("dbscan", "hnsw"),
+        engine = c("auto", "dbscan", "hnsw"),
         nn_network = NULL,
         verbose = NULL, ...) {
     # NSE vars
@@ -655,7 +670,7 @@ setMethod("createNetwork", signature("giotto", "delaunayNetworkParam"),
         if (!inherits(nn_network, "kNN")) {
             stop(wrap_txt(errWidth = TRUE,
                 "[createNetwork] `nn_network` must be a kNN object, as
-                returned by dbscan::kNN() or GiottoDisk::hnswKNN()."
+                returned by dbscan::kNN() or hnswKNN()."
             ), call. = FALSE)
         }
         if (ncol(nn_network$id) < k) {
@@ -959,14 +974,15 @@ edge_distances <- function(x, y, x_node_ids = NULL) {
 #' @param k number of k neighbors to use
 #' @param minimum_shared minimum shared neighbors
 #' @param top_shared keep at ...
-#' @param engine character. kNN search backend. `"dbscan"` (default) is exact
-#'   and single-threaded. `"hnsw"` uses an approximate HNSW index via
-#'   `GiottoDisk::hnswKNN()` -- multithreaded and far faster at PCA
-#'   dimensionality, at the cost of recall slightly below 1 and results that
-#'   can shift with thread count. Requires \pkg{GiottoDisk} and
-#'   \pkg{RcppHNSW}.
+#' @param engine character. kNN search backend, one of `"auto"` (default),
+#'   `"dbscan"` or `"hnsw"`. This function builds a network in expression
+#'   space, so `"auto"` resolves to `"hnsw"` -- an approximate HNSW index
+#'   ([hnswKNN()]), whose cost does not grow with dimensionality the way an
+#'   exact kd-tree search does. Pass `"dbscan"` for an exact search.
 #' @param verbose be verbose
-#' @param ... additional parameters for kNN and sNN functions from dbscan
+#' @param ... additional parameters for the search backend selected by
+#'   `engine` -- [dbscan::kNN()] or [hnswKNN()] -- and, for `type = "sNN"`,
+#'   for `dbscan::sNN()`
 #' @returns giotto object with updated NN network
 #' @details This function creates a k-nearest neighbour (kNN) or shared
 #' nearest neighbour (sNN) network based on the provided dimension reduction
@@ -1015,7 +1031,7 @@ createNearestNetwork <- function(
         k = 30,
         minimum_shared = 5,
         top_shared = 3,
-        engine = c("dbscan", "hnsw"),
+        engine = c("auto", "dbscan", "hnsw"),
         verbose = TRUE,
         ...) {
     # NB: thin wrapper over createNetwork() + nnNetObj construction.
@@ -1025,6 +1041,10 @@ createNearestNetwork <- function(
 
     type <- match.arg(type, c("sNN", "kNN"))
     engine <- match.arg(engine)
+    # Both branches below build the network in expression space -- a PCA
+    # embedding or the expression matrix itself -- so the dimensionality is
+    # always high enough for the HNSW index to pay for itself.
+    if (identical(engine, "auto")) engine <- "hnsw"
 
     spat_unit <- set_default_spat_unit(gobject, spat_unit = spat_unit)
     feat_type <- set_default_feat_type(gobject,

@@ -15,7 +15,7 @@ kNNNetworkParam(
   include_weight = TRUE,
   include_distance = TRUE,
   output = c("auto", "data.table", "igraph", "parquet"),
-  engine = c("dbscan", "hnsw")
+  engine = c("auto", "dbscan", "hnsw")
 )
 }
 \arguments{
@@ -33,12 +33,14 @@ kNNNetworkParam(
 
 \item{output}{one of \code{"auto"}, \code{"data.table"}, \code{"igraph"}, \code{"parquet"}}
 
-\item{engine}{character. kNN search backend. \code{"dbscan"} (default) is exact
-and single-threaded. \code{"hnsw"} uses an approximate HNSW index via
-\code{GiottoDisk::hnswKNN()} -- multithreaded and far faster at PCA
-dimensionality, at the cost of recall slightly below 1 and results that
-can shift with thread count. Requires \pkg{GiottoDisk} and
-\pkg{RcppHNSW}.}
+\item{engine}{character. kNN search backend, one of \code{"auto"} (default),
+\code{"dbscan"} or \code{"hnsw"}. \code{"dbscan"} is an exact kd-tree search -- optimal
+on the 2-3 dimensions of a spatial network, and degrading toward brute
+force as dimensionality rises. \code{"hnsw"} is an approximate HNSW index
+(\code{\link[GiottoDisk:hnswKNN]{hnswKNN()}}) whose cost is insensitive to dimensionality, making it much
+faster in the 10-1000 dimensions of an expression-space network. \code{"auto"}
+leaves the choice to the caller that knows which space the network is
+built in; see \code{\link[=createNetwork]{createNetwork()}}.}
 }
 \description{
 Constructor and class for k-Nearest-Neighbour network parameters. Pass

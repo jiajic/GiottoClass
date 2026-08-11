@@ -19,7 +19,7 @@ createNearestNetwork(
   k = 30,
   minimum_shared = 5,
   top_shared = 3,
-  engine = c("dbscan", "hnsw"),
+  engine = c("auto", "dbscan", "hnsw"),
   verbose = TRUE,
   ...
 )
@@ -54,16 +54,17 @@ createNearestNetwork(
 
 \item{top_shared}{keep at ...}
 
-\item{engine}{character. kNN search backend. \code{"dbscan"} (default) is exact
-and single-threaded. \code{"hnsw"} uses an approximate HNSW index via
-\code{GiottoDisk::hnswKNN()} -- multithreaded and far faster at PCA
-dimensionality, at the cost of recall slightly below 1 and results that
-can shift with thread count. Requires \pkg{GiottoDisk} and
-\pkg{RcppHNSW}.}
+\item{engine}{character. kNN search backend, one of \code{"auto"} (default),
+\code{"dbscan"} or \code{"hnsw"}. This function builds a network in expression
+space, so \code{"auto"} resolves to \code{"hnsw"} -- an approximate HNSW index
+(\code{\link[GiottoDisk:hnswKNN]{hnswKNN()}}), whose cost does not grow with dimensionality the way an
+exact kd-tree search does. Pass \code{"dbscan"} for an exact search.}
 
 \item{verbose}{be verbose}
 
-\item{...}{additional parameters for kNN and sNN functions from dbscan}
+\item{...}{additional parameters for the search backend selected by
+\code{engine} -- \code{\link[dbscan:kNN]{dbscan::kNN()}} or \code{\link[GiottoDisk:hnswKNN]{hnswKNN()}} -- and, for \code{type = "sNN"},
+for \code{dbscan::sNN()}}
 }
 \value{
 giotto object with updated NN network

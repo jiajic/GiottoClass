@@ -38,6 +38,7 @@ Imports:
     Matrix (>= 1.6-2),
     matrixStats (>= 0.55.0),
     methods,
+    RcppHNSW,
     reticulate (>= 1.25),
     ScaledMatrix,
     stats,
@@ -79,6 +80,7 @@ Suggests:
 Remotes: giotto-suite/GiottoUtils
 Config/testthat/edition: 3
 Collate: 
+    'NN_hnsw.R'
     'classes-virtuals.R'
     'classes-utils.R'
     'classes-images.R'
