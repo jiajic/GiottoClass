@@ -982,8 +982,7 @@
     if (is_multi) {
         if (!is.null(cell_ids)) {
             su_keys <- if (identical(spat_unit, ":all:")) {
-                unique(c(names(gobject@expression),
-                    names(gobject@cell_metadata)))
+                .gm_narrowing_keys(gobject, "spat_unit")
             } else {
                 spat_unit
             }
@@ -995,10 +994,7 @@
         }
         if (!is.null(feat_ids)) {
             ft_keys <- if (identical(feat_type, ":all:")) {
-                unique(c(unlist(lapply(gobject@expression, names),
-                    use.names = FALSE),
-                    unlist(lapply(gobject@feat_metadata, names),
-                    use.names = FALSE)))
+                .gm_narrowing_keys(gobject, "feat_type")
             } else {
                 feat_type
             }

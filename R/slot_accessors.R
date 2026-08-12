@@ -3361,6 +3361,12 @@ setMethod("setGiottoImage", signature("giotto"), function(gobject,
 #' to use
 #' @param svkey use a `svkey`. Other params will be ignored. This is just
 #' syntactic sugar for `svkey@get(gobject)`
+#' @param samples character. (giottoMulti only) optional vector of sample
+#' names to narrow the joint output to. Joint slots (@expression,
+#' @cell_metadata) honor this directly; per-child-only slots (spatial
+#' locations, polygon info) remain inaccessible from `spatValues(mg, ...)`
+#' regardless — use the joint-level slots as the ground truth and avoid
+#' reaching into `mg[[sample]]` for per-child content.
 #' @param verbose verbosity
 #' @param debug logical. (default = FALSE) See details.
 #' @returns A data.table with a cell_ID column and whichever feats were
@@ -3420,6 +3426,7 @@ spatValues <- function(gobject,
     svkey = NULL,
     view = NULL,
     space = NULL,
+    samples = NULL,
     verbose = NULL,
     debug = FALSE) {
     # Accepts giotto or giottoMulti. On gmulti, expression / cell_metadata
@@ -3431,6 +3438,13 @@ spatValues <- function(gobject,
     if (!is.null(svkey)) {
         checkmate::assert_class(svkey, "svkey")
         return(svkey@get(gobject))
+    }
+    # `samples =` is a giottoMulti-only narrowing arg. On a single giotto
+    # it has no meaning; error loudly rather than silently ignoring so
+    # users don't think they're slicing when they aren't.
+    if (!is.null(samples) && !inherits(gobject, "giottoMulti")) {
+        stop("[spatValues] `samples =` is only meaningful on giottoMulti",
+            call. = FALSE)
     }
     checkmate::assert_character(feats)
     # dedupe — duplicate feats would produce duplicate columns downstream
@@ -3501,7 +3515,7 @@ spatValues <- function(gobject,
         if (!is.null(vals)) {
             return(vals)
         }
-        e <- getExpression(
+        expr_args <- list(
             gobject = gobject,
             spat_unit = spat_unit,
             feat_type = feat_type,
@@ -3509,6 +3523,8 @@ spatValues <- function(gobject,
             set_defaults = TRUE, # try to guess name if needed
             output = "exprObj"
         )
+        if (!is.null(samples)) expr_args$samples <- samples
+        e <- do.call(getExpression, expr_args)
         if (is.null(e)) {
             return(NULL)
         }
@@ -3533,7 +3549,7 @@ spatValues <- function(gobject,
         if (!is.null(vals)) {
             return(vals)
         }
-        cx <- getCellMetadata(
+        cm_args <- list(
             gobject = gobject,
             spat_unit = spat_unit,
             feat_type = feat_type,
@@ -3541,6 +3557,8 @@ spatValues <- function(gobject,
             copy_obj = FALSE,
             set_defaults = FALSE
         )
+        if (!is.null(samples)) cm_args$samples <- samples
+        cx <- do.call(getCellMetadata, cm_args)
         if (is.null(cx)) {
             return(NULL)
         }

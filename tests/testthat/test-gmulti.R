@@ -321,9 +321,15 @@ test_that("clearing @id_sig forces a rebuild even when length matches", {
 })
 
 
-# subset narrows id_map non-destructively ####
+# subset narrows @cell_ID / @feat_ID non-destructively ####
+#
+# @cell_ID / @feat_ID are the active narrowing channel (nested by spat_unit /
+# feat_type, matching the single-giotto convention). @id_map is the full
+# identity registry and is NOT narrowed by subsetting — it stays the ground
+# truth for "which globals exist", so the narrowing can be widened or reset
+# without having lost the population.
 
-test_that("subset(mg, cells = ...) narrows id_map without touching children", {
+test_that("subset(mg, cells = ...) narrows @cell_ID without touching children", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
@@ -331,7 +337,10 @@ test_that("subset(mg, cells = ...) narrows id_map without touching children", {
     keep <- c("a::c1", "a::c2", "b::c1")
     mg2 <- subset(mg, cells = keep)
 
-    expect_identical(mg2@id_map$cells$global_id, keep)
+    # narrowing is recorded on @cell_ID, keyed by spat_unit
+    expect_identical(mg2@cell_ID[["cell"]], keep)
+    # @id_map is the registry — untouched by narrowing
+    expect_identical(nrow(mg2@id_map$cells), 8L)
     # children intact
     expect_identical(length(spatIDs(mg2@objects$a)), 5L)
     expect_identical(length(spatIDs(mg2@objects$b)), 3L)
@@ -339,22 +348,27 @@ test_that("subset(mg, cells = ...) narrows id_map without touching children", {
     expect_identical(spatIDs(mg2), keep)
 })
 
-test_that("subset(mg, features = ...) narrows feat id_map", {
+test_that("subset(mg, features = ...) narrows @feat_ID", {
     g1 <- .mk_minimal(5, 4)
     mg <- createGiottoMulti(list(a = g1))
 
     keep <- c("f1", "f3")
     mg2 <- subset(mg, features = keep)
-    expect_identical(sort(unique(mg2@id_map$feats$global_id)), sort(keep))
+    expect_identical(sort(mg2@feat_ID[["rna"]]), sort(keep))
+    expect_identical(sort(featIDs(mg2)), sort(keep))
+    # registry untouched
+    expect_identical(sort(unique(mg2@id_map$feats$global_id)),
+        c("f1", "f2", "f3", "f4"))
 })
 
-test_that("subset warns on missing globals", {
+test_that("subset silently ignores globals that are not in the registry", {
+    # Matches subsetGiotto's behaviour on a single giotto: unknown ids are
+    # intersected away without comment, rather than warned about.
     g1 <- .mk_minimal(5, 4)
     mg <- createGiottoMulti(list(a = g1))
-    expect_warning(
-        subset(mg, cells = c("a::c1", "a::nope")),
-        "not in id_map"
-    )
+
+    expect_no_warning(mg2 <- subset(mg, cells = c("a::c1", "a::nope")))
+    expect_identical(spatIDs(mg2), "a::c1")
 })
 
 test_that("subset is non-destructive on the parent (value semantics)", {
@@ -365,9 +379,10 @@ test_that("subset is non-destructive on the parent (value semantics)", {
     mg <- createGiottoMulti(list(a = g1, b = g2))
 
     mg2 <- subset(mg, cells = c("a::c1"))
-    expect_identical(nrow(mg2@id_map$cells), 1L)
+    expect_identical(spatIDs(mg2), "a::c1")
     # original is untouched
-    expect_identical(nrow(mg@id_map$cells), 8L)  # 5 + 3
+    expect_identical(length(spatIDs(mg)), 8L)  # 5 + 3
+    expect_null(mg@cell_ID)
 })
 
 
@@ -431,12 +446,17 @@ test_that("subset on empty multi narrows id_map; assembly honors it", {
 })
 
 
-# Per-child getters: children are the spatial axis; subset does not touch
-# them. Reads return child content as-is. ####
+# Sample-scoped getters compose additively with the view narrowing ####
+#
+# The three narrowing knobs are independent and additive:
+#   * sample — `object=` / `samples=`, picks which children are read
+#   * view   — @cell_ID / @feat_ID, picks which cells/feats survive
+#   * space  — per-child (or aliased-group) transform mappings
+# A sample-scoped read therefore returns that child's content with the
+# active view narrowing applied on top. The children themselves are never
+# mutated; `mg@objects$a` / `mg[["a"]]` still return the raw child.
 
-test_that("getSpatialLocations on giottoMulti returns child content as-is", {
-    # subset narrows the joint analysis view, not children's spatial state.
-    # Per-child reads pass through whatever the child has.
+test_that("sample-scoped getSpatialLocations composes with the view narrowing", {
     g1 <- .mk_minimal(5, 4)
     g2 <- .mk_minimal(3, 4)
     mg <- createGiottoMulti(list(a = g1, b = g2))
@@ -445,12 +465,20 @@ test_that("getSpatialLocations on giottoMulti returns child content as-is", {
 
     sl_a <- getSpatialLocations(mg2, object = "a")$a
     expect_s4_class(sl_a, "spatLocsObj")
-    # child a still has all 5 cells — subset did not touch children
-    expect_identical(sort(sl_a[]$cell_ID),
-        c("c1", "c2", "c3", "c4", "c5"))
+    # sample "a" narrowed by the active view -> c1, c3
+    expect_identical(sort(sl_a[]$cell_ID), c("c1", "c3"))
 
     sl_b <- getSpatialLocations(mg2, object = "b")$b
-    expect_identical(sort(sl_b[]$cell_ID), c("c1", "c2", "c3"))
+    expect_identical(sort(sl_b[]$cell_ID), "c1")
+
+    # children themselves are untouched — raw access still returns all cells
+    expect_identical(length(spatIDs(mg2@objects$a)), 5L)
+    expect_identical(length(spatIDs(mg2@objects$b)), 3L)
+
+    # with no view narrowing, a sample-scoped read is a pure pass-through
+    sl_a_full <- getSpatialLocations(mg, object = "a")$a
+    expect_identical(sort(sl_a_full[]$cell_ID),
+        c("c1", "c2", "c3", "c4", "c5"))
 })
 
 

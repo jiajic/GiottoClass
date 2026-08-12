@@ -28,9 +28,9 @@
 \usage{
 \S4method{featIDs}{giottoBinPoints}(x, uniques = TRUE, ...)
 
-\S4method{spatIDs}{giottoMulti}(x, object = NULL, local = FALSE, ...)
+\S4method{spatIDs}{giottoMulti}(x, object = NULL, local = FALSE, spat_unit = NULL, ...)
 
-\S4method{featIDs}{giottoMulti}(x, object = NULL, local = FALSE, uniques = TRUE, ...)
+\S4method{featIDs}{giottoMulti}(x, object = NULL, local = FALSE, uniques = TRUE, feat_type = NULL, ...)
 
 \S4method{spatIDs}{giotto}(x, spat_unit = NULL, subset, negate = FALSE, quote = TRUE, ...)
 
@@ -74,6 +74,8 @@ currently only pass to \code{fDataDT()}.}
 
 \item{spat_unit}{(optional) specify which spatial unit}
 
+\item{feat_type}{(optional) specify which feature type}
+
 \item{subset}{logical expression to find a subset of features.}
 
 \item{negate}{logical. if \code{TRUE} all IDs that are \strong{not} in the \code{subset}
@@ -89,8 +91,6 @@ interactively.}
 \item{old}{character. IDs to match against to replace}
 
 \item{value}{character. IDs to replace with}
-
-\item{feat_type}{(optional) specify which feature type}
 }
 \value{
 character vector of cell/spatial IDs or feature IDs

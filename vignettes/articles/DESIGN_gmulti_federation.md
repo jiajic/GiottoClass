@@ -14,9 +14,9 @@ Today's `giottoMulti` is incomplete in five ways:
 
 1. **Implicit single-spat_unit / single-feat_type at the joint level.** Joint slots (`@cell_metadata`, `@expression`, `@dim_reduction`) silently flatten to one spat_unit and one feat_type because there's no declaration of which child names federate up. This backslides on Giotto's multi-modality / multi-scale value proposition.
 
-2. **Dispatcher abuses `space` as a sample selector.** [`.gg_multi_dispatch_spatial`](../../GiottoVisuals/R/gmulti.R) takes a `space` arg typed as a character vector of sample names. Lines 56–69 of that file actively reject *real* defined-space names with a "not yet supported" error — the parameter is doing the wrong job under the wrong name.
+2. **Dispatcher abuses `space` as a sample selector.** [`.gg_multi_dispatch_spatial`](../../../GiottoVisuals/R/gmulti.R) takes a `space` arg typed as a character vector of sample names. Lines 56–69 of that file actively reject *real* defined-space names with a "not yet supported" error — the parameter is doing the wrong job under the wrong name.
 
-3. **`GiottoVisuals` reaches into GiottoClass internals via `:::`.** [GiottoVisuals/R/gmulti.R:99](../../GiottoVisuals/R/gmulti.R#L99) calls `GiottoClass:::.gm_inject_joint_metadata` to project joint cmeta into a scratch child gobject before each per-panel plot. Workaround for getters that aren't sample-aware.
+3. **`GiottoVisuals` reaches into GiottoClass internals via `:::`.** [GiottoVisuals/R/gmulti.R:99](../../../GiottoVisuals/R/gmulti.R#L99) calls `GiottoClass:::.gm_inject_joint_metadata` to project joint cmeta into a scratch child gobject before each per-panel plot. Workaround for getters that aren't sample-aware.
 
 4. **No home for atlas-frame shared content.** Polygons drawn in an atlas (cross-sample) coordinate frame don't belong in any `@objects[child]@spatial_info`. There's no slot at the gmulti level that holds them.
 
@@ -38,22 +38,19 @@ Three orthogonal call-time concerns:
 
 `samples` is a **call-time parameter, not a slotted artifact**. No new slot. The character vector composes into the view pipeline as `selectSamples(...)` — exactly the existing view step — when the resolver is invoked. From the outside, `samples = c("A","B")` looks atomic; underneath it routes through the same mechanism that handles `view = "tumor_focus"` containing a `selectSamples` step.
 
-### Why orthogonal beats sdata-style merger
+### Why the axes are orthogonal
 
-`spatialdata` (scverse) folds sample identity into coord-system membership: a SpatialData object holds dict-of-element-name → element; each element declares its `coordinate_systems`; sample identity emerges from either (a) element-name conventions like `shapes_sampleA`, (b) per-sample coord systems with affines to a shared atlas, or (c) one SpatialData object per sample. There is no first-class sample axis.
+The alternative is folding sample identity into coordinate-frame membership, so that
+"which sample" is answered by naming conventions or by per-sample frames rather than by
+a structural axis. That was considered and rejected.
 
-The trade this makes:
-
-| workflow class | sdata pattern | gmulti orthogonal-axis pattern |
-|---|---|---|
-| Atlas aggregation in shared frame | ✓ native | needs federated-read + fan-out-reduce dispatch |
-| Per-sample QC / normalization / clustering | needs workaround | ✓ native |
-| Multi-sample integration / batch correction | needs workaround | ✓ native |
-| Sample-faceted visualization | needs workaround | ✓ native |
-| Cohort statistical comparisons | needs workaround | ✓ native |
-| Region-based composition cohort-wide | ✓ native | needs federated-read + fan-out-reduce dispatch |
-
-Most spatial-omics work is sample-keyed. The cross-sample aggregation case sdata wins on is real but narrow. Giotto keeps `@objects` as the first-class sample axis and adds the aggregation infrastructure as a focused follow-on (separate design pass), rather than merging samples into coord systems.
+Most spatial-omics work is sample-keyed: QC, normalization, clustering, integration,
+faceted visualization, and cohort statistics are all per-sample operations, and each of
+them needs to name a sample directly. Cross-sample aggregation in a shared frame is the
+one workflow that benefits from the merged model, and it is real but narrow. Giotto
+keeps `@objects` as the first-class sample axis and adds the aggregation infrastructure
+as a focused follow-on (separate design pass) rather than reshaping the data model
+around the narrower case.
 
 ### Auto-injection convention (carries over from `giottoView` design)
 
@@ -108,7 +105,7 @@ Two named lists (`spat_unit`, `feat_type`), each holding entries keyed by the gm
 - Captures **the set of gmulti-level handles** users address.
 - Composes with existing slot model: joint `@cell_metadata` / `@expression` / `@dim_reduction` become keyed by (spat_unit, feat_type) drawn from `@mapping`'s top-level names; federation looks up which child name to pull from each participating sample.
 
-This is **structurally similar to sdata's `region` / `region_key` / `instance_key` annotation pattern** in adata.uns — declarations that link logical groupings to concrete addresses — but lifted from per-element metadata into a first-class gmulti slot.
+The shape is a familiar one — declarations that link logical groupings to concrete addresses — but lifted out of per-element metadata into a first-class gmulti slot, so the declaration is addressable and mutable rather than implied by convention.
 
 ### Auto-init from children
 
@@ -286,7 +283,7 @@ Pointer-class is **deferred** in implementation order — only landed when there
 
 ### Today
 
-[`.gg_multi_dispatch_spatial`](../../GiottoVisuals/R/gmulti.R) (GiottoVisuals):
+[`.gg_multi_dispatch_spatial`](../../../GiottoVisuals/R/gmulti.R) (GiottoVisuals):
 
 - Takes `space` arg typed as character vector of sample names (semantic misnomer).
 - Materializes view at gmulti level, iterates per child.
@@ -386,7 +383,7 @@ In dependency order. Each phase is independently shippable and useful.
 Explicitly out of scope, to avoid scope creep:
 
 - **Composable views** (`view1 + view2`). Real demand, but composition semantics (intersect filters, union crops, predicate-frame conflicts) deserve their own design pass. Currently errors with "not yet implemented" — leave it.
-- **sdata-style merger** of samples into coord systems. Considered and rejected — see §2.
+- **Merging samples into coordinate systems** rather than keeping a structural sample axis. Considered and rejected — see §2.
 - **Cross-sample aggregation infrastructure** (the "fan-out + reduce" dispatch shape). Adjacent to this design but structurally different — separate document needed.
 - **GiottoLens consumption of `@mapping`**. The viewer needs to learn how to read `@mapping`-aware federations; that's a downstream package change.
 - **Migration helper for existing gmulti objects**. If `@mapping` lands as a required slot, existing saved gmulti's need either auto-population on load or an explicit migration call. Decide closer to landing.
@@ -394,27 +391,7 @@ Explicitly out of scope, to avoid scope creep:
 
 ---
 
-## 11. Comparison to sdata
-
-| concern | sdata | this design |
-|---|---|---|
-| **Sample axis** | Not first-class; emerges from element naming or per-sample coord systems | First-class `@objects` dict |
-| **Per-child name reconciliation** | Manual (rename on ingest, or naming conventions) | `@mapping` declaration layer |
-| **Global frame-anchored content** | `sdata.shapes["regions"]` with `coordinate_systems=["atlas"]` — native | `gmulti@spatial_info[["atlas_regions"]]` at gmulti level + space reference on the object |
-| **Sample addressing** | `adata.obs.sample_id == "X"` filtering, or element-name patterns | `sample =` arg, `"sample::name"` prefix, both canonical |
-| **Native-frame multi-sample plotting** | No native primitive (workaround via per-sample coord systems or filtering) | Dispatcher's `samples` arg + per-panel composition |
-| **Atlas aggregation** | Native via `sdata.aggregate` | Needs separate aggregation dispatch (deferred design) |
-| **Predicate-frame vs output-frame split** | Implicit via `target_coordinate_system` arg | Explicit via `view@space` vs `space =` getter arg |
-
-**Where this design wins**: per-sample workflows (QC, normalization, clustering, integration, faceted visualization, cohort statistics), per-child name reconciliation declared at the data model layer, predicate/output frame split formalized.
-
-**Where sdata wins**: atlas-frame aggregation with `target_coordinate_system` baked into the data model. Catching up requires the aggregation dispatch follow-on (see §10).
-
-**Why the chosen tradeoffs**: in the spatial omics workflows Giotto targets, per-sample axes are load-bearing in more analyses than cross-sample aggregation. The aggregation case is real but narrow; the cost of adding aggregation infrastructure on top of orthogonal axes is lower than the cost of working around the absence of a first-class sample axis in every per-sample workflow.
-
----
-
-## 12. Open questions to resolve at implementation time
+## 11. Open questions to resolve at implementation time
 
 1. **`gmultiMapping<-` setter semantics for changing an existing entry's per-sample names**: warn + drop dependent joint state, or block until user explicitly opts in?
 2. **Lazy federation vs eager materialization on first joint slot access**: lazy by default (matches the carry-keys discipline + minimizes startup cost). What signals eager materialization (`materialize(gmulti, ...)`)?
@@ -425,17 +402,16 @@ Explicitly out of scope, to avoid scope creep:
 
 ---
 
-## 13. Related memory entries
+## 12. Related memory entries
 
 - `project_giottoview_design_shape.md` — view/space split, predicate-frame vs output-frame contract, auto-injection convention. Foundation this builds on.
 - `project_giottolens_gmulti_spaces_views.md` — GiottoLens side, `:default:` sample sentinel pattern, three orthogonal capabilities (sample / space / view).
 - `project_gmulti_combined_defaults.md` — heterogeneous federation: gmulti defaults should union child defaults. `@mapping` operationalizes this.
 - `project_gmulti_carry_keys_discipline.md` — joint level as source of truth; this design extends that to access-layer slicing.
 - `project_gmulti_joint_spatial_network.md` — spatial_network slot lift from per-child to joint (pending). Adjacent to `@mapping` since networks would also federate.
-- `reference_sdata_sopa_actual_perf_limits.md` — sdata code observations supporting §11 comparison.
 - `feedback_giottodisk_output_no_materialize.md` — federated-read wrapper philosophy (don't force materialization at getter boundaries).
 
-## 14. Related code references
+## 13. Related code references
 
 - `R/gmulti.R` — `giottoMulti` class def, dispatcher hooks, `.gm_inject_joint_metadata` (to be deleted in phase 4).
 - `R/methods-view.R` — view / space / selectSamples machinery (foundation).

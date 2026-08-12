@@ -19,6 +19,7 @@ spatValues(
   svkey = NULL,
   view = NULL,
   space = NULL,
+  samples = NULL,
   verbose = NULL,
   debug = FALSE
 )
@@ -64,6 +65,9 @@ to use}
 
 \item{svkey}{use a \code{svkey}. Other params will be ignored. This is just
 syntactic sugar for \code{svkey@get(gobject)}}
+
+\item{samples}{character. (giottoMulti only) optional vector of sample
+names to narrow the joint output to. Joint slots (@expression,}
 
 \item{verbose}{verbosity}
 

@@ -152,7 +152,7 @@ man/*.Rd                           (16 manpages regenerated)
 
 ## Pointers
 
-- Full design rationale + sdata comparison: [DESIGN_gmulti_federation.md](DESIGN_gmulti_federation.md)
+- Full design rationale: [DESIGN_gmulti_federation.md](DESIGN_gmulti_federation.md)
 - Memory entry that indexes both files: `project_gmulti_federation_design.md`
 - Foundation memory (view/space split — load-bearing for §2 of the design doc): `project_giottoview_design_shape.md`
 

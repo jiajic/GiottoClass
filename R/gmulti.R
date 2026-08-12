@@ -78,7 +78,7 @@
 #     globally (with id_map lookup), or both?
 #   * Do per-child cell-metadata columns get reflected upward into the joint
 #     @cell_metadata, or kept separate and merged on demand?
-#   * Where do integration-method parameters (Harmony, Seurat-anchor) live?
+#   * Where do integration-method parameters (harmony, anchor-based) live?
 #     Probably @parameters, possibly a dedicated @integration slot if it
 #     grows. Defer until we have a concrete use case.
 # =============================================================================
@@ -233,9 +233,9 @@ setMethod("initialize", signature("giottoMulti"), function(.Object, objects = NU
     # the *surviving set from a prior filter on a specific population*,
     # which is no longer well-defined after a structural change.
     # User-facing contract: re-run filterGiotto / subsetGiotto on the
-    # expanded multi to recompute. Diverges deliberately from sdata's
-    # implicit-inclusion pattern where new elements silently participate
-    # in any state carried on the parent; gmulti treats narrowing as
+    # expanded multi to recompute. The alternative — letting a new child
+    # silently inherit whatever narrowing the parent carries — would report
+    # a filter that child never went through, so narrowing is treated as
     # eager state tied to a specific population.
     cur_sig <- .gm_compute_sig(.Object@objects)
     if (!identical(cur_sig, .Object@id_sig)) {
@@ -772,46 +772,22 @@ setReplaceMethod("names", signature(x = "giottoMulti", value = "character"),
 #' @param features `character` vector of global feature IDs to retain.
 #'   `NULL` = no feature-level filter.
 #' @param ... not used
-#' @returns a `giottoMulti` with narrowed `@id_map` and trimmed joint slots
+#' @returns a `giottoMulti` with `@cell_ID` / `@feat_ID` narrowed and
+#'   populated joint slots trimmed accordingly. `@id_map` (the identity
+#'   registry) is left untouched — that slot is reserved for view-recipe
+#'   narrowing, not direct subsetting.
 #' @export
 setMethod("subset", "giottoMulti",
     function(x, cells = NULL, features = NULL, ...) {
-        if (!is.null(cells)) {
-            checkmate::assert_character(cells, any.missing = FALSE)
-            m <- x@id_map$cells
-            keep <- m$global_id %in% cells
-            missing <- setdiff(cells, m$global_id)
-            if (length(missing) > 0L) {
-                warning(sprintf(
-                    "%d requested cell global_id(s) not in id_map (ignored)",
-                    length(missing)
-                ), call. = FALSE)
-            }
-            x@id_map$cells <- m[keep, ]
-        }
-        if (!is.null(features)) {
-            checkmate::assert_character(features, any.missing = FALSE)
-            m <- x@id_map$feats
-            keep <- m$global_id %in% features
-            missing <- setdiff(features, m$global_id)
-            if (length(missing) > 0L) {
-                warning(sprintf(
-                    "%d requested feature global_id(s) not in id_map (ignored)",
-                    length(missing)
-                ), call. = FALSE)
-            }
-            x@id_map$feats <- m[keep, ]
-        }
-
-        # Eagerly trim populated joint slots to the new id_map.
-        joint_slots <- c("expression", "cell_metadata", "feat_metadata",
-            "dimension_reduction", "nn_network", "spatial_enrichment")
-        for (s in joint_slots) {
-            v <- slot(x, s)
-            if (!is.null(v)) slot(x, s) <- .gm_walk_apply_view(v, x)
-        }
-
-        x
+        # Delegate to subsetGiotto for direct subsetting — narrows
+        # @cell_ID / @feat_ID (the global narrowing channel) and trims
+        # populated joint slots in place. View-recipe creation goes
+        # through viewFilter / selectSamples, not this method.
+        subsetGiotto(
+            gobject = x,
+            cell_ids = cells,
+            feat_ids = features
+        )
     }
 )
 
@@ -939,6 +915,36 @@ setMethod("show", "giottoMulti", function(object) {
 
 # INTERNAL HELPERS ####
 
+#' Keys over which a `":all:"` narrowing is recorded on @cell_ID / @feat_ID.
+#'
+#' `@mapping` is the authoritative universe for both axes: it is populated at
+#' construction by `.gm_discover_mapping()` and covers every spat_unit /
+#' feat_type any child declares. The joint slots are only a lazily-populated
+#' cache — they are empty on a freshly constructed multi and stay empty until
+#' something explicitly writes one, so deriving keys from them alone means a
+#' `":all:"` narrowing records nothing at all.
+#'
+#' The joint-slot and `@cell_ID` / `@feat_ID` names are still unioned in, to
+#' cover legacy multis whose `@mapping` was cleared.
+#' @noRd
+.gm_narrowing_keys <- function(gobject, axis = c("spat_unit", "feat_type")) {
+    axis <- match.arg(axis)
+    declared <- names(gobject@mapping[[axis]])
+    cached <- switch(axis,
+        "spat_unit" = c(
+            names(gobject@expression),
+            names(gobject@cell_metadata),
+            names(gobject@cell_ID)
+        ),
+        "feat_type" = c(
+            unlist(lapply(gobject@expression, names), use.names = FALSE),
+            unlist(lapply(gobject@feat_metadata, names), use.names = FALSE),
+            names(gobject@feat_ID)
+        )
+    )
+    unique(c(declared, cached))
+}
+
 #' Apply the giottoMulti id_map view to a joint-slot subobject.
 #'
 #' Shared-domain getter methods read the joint slot and pass the result here.
@@ -958,8 +964,18 @@ setMethod("show", "giottoMulti", function(object) {
 #' @noRd
 .gm_apply_view <- function(x, gobject) {
     if (!inherits(gobject, "giottoMulti")) return(x)
-    cells <- gobject@id_map$cells$global_id
-    feats <- gobject@id_map$feats$global_id
+    # Active global narrowing lives in @cell_ID / @feat_ID, indexed by
+    # spat_unit / feat_type. @id_map is for view recipes only — it's the
+    # full identity registry, not an active filter. Subobjects expose
+    # their own spat_unit / feat_type via accessors.
+    su <- tryCatch(spatUnit(x), error = function(e) NULL)
+    ft <- tryCatch(featType(x), error = function(e) NULL)
+    cells <- if (!is.null(su) && length(su) == 1L) {
+        gobject@cell_ID[[su]]
+    } else NULL
+    feats <- if (!is.null(ft) && length(ft) == 1L) {
+        gobject@feat_ID[[ft]]
+    } else NULL
 
     if (inherits(x, "exprObj")) {
         mat <- x[]
@@ -1877,6 +1893,11 @@ setMethod("getExpression", "giottoMulti",
             e <- callNextMethod(gobject, values = target_values,
                 spat_unit = spat_unit, feat_type = feat_type,
                 output = "exprObj", set_defaults = FALSE)
+            # Safety filter — joint slot can drift relative to @cell_ID /
+            # @feat_ID when filterGiotto / subsetGiotto narrow without
+            # cascading through the joint cache. Cheap re-filter keeps
+            # the slot honest.
+            e <- .gm_apply_view(e, gobject)
             e <- .gm_slice_to_samples(e, samples, gobject)
             if (output == "matrix") return(e[])
             return(e)
@@ -1914,13 +1935,16 @@ setMethod("getCellMetadata", "giottoMulti", function(gobject,
         .set_default_nesting(gobject, spat_unit, feat_type)
     }
 
-    # Joint slot populated? Defer to gAny — slot is the authoritative source
-    # (eager subset trims in place).
+    # Joint slot populated? Defer to gAny, then safety-filter through
+    # .gm_apply_view — the slot can drift relative to @cell_ID when
+    # filterGiotto / subsetGiotto narrow without re-trimming the joint
+    # cache.
     joint <- gobject@cell_metadata[[spat_unit]][[feat_type]]
     if (inherits(joint, "cellMetaObj")) {
         cm <- callNextMethod(gobject,
             spat_unit = spat_unit, feat_type = feat_type,
             output = "cellMetaObj", copy_obj = copy_obj, set_defaults = FALSE)
+        cm <- .gm_apply_view(cm, gobject)
         cm <- .gm_slice_to_samples(cm, samples, gobject)
         if (output == "data.table") return(cm[])
         return(cm)
@@ -2070,16 +2094,63 @@ setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
         column_cell_ID = "cell_ID")
 }
 
+# Narrow a list of per-child subobjects by the global @cell_ID[[su]]
+# allow-list. Output-level filter — runs once after the federation getter
+# has assembled its per-child list. Returns the list unchanged when no
+# narrowing is in effect (@cell_ID[[su]] is NULL).
+#' @noRd
+.gm_narrow_child_outputs <- function(out_list, gobject, spat_unit) {
+    if (is.null(spat_unit) || length(spat_unit) != 1L) return(out_list)
+    allowed_global <- gobject@cell_ID[[spat_unit]]
+    if (is.null(allowed_global)) return(out_list)
+    Map(function(child_obj, sample_name) {
+        prefix <- paste0(sample_name, "::")
+        local_allowed <- sub(paste0("^", prefix), "",
+            allowed_global[startsWith(allowed_global, prefix)])
+        .gm_subobj_filter_by_local_ids(child_obj, local_allowed)
+    }, out_list, names(out_list))
+}
+
+#' @noRd
+.gm_subobj_filter_by_local_ids <- function(x, allowed_local_ids) {
+    if (inherits(x, "spatLocsObj")) {
+        cell_ID <- NULL  # data.table NSE
+        dt <- x[]
+        x[] <- dt[cell_ID %in% allowed_local_ids]
+        return(x)
+    }
+    if (inherits(x, "spatialNetworkObj")) {
+        from <- to <- NULL  # NSE
+        dt <- x[]
+        x[] <- dt[from %in% allowed_local_ids & to %in% allowed_local_ids]
+        return(x)
+    }
+    if (inherits(x, "giottoPolygon")) {
+        sv <- x@spatVector
+        keep <- terra::values(sv)$poly_ID %in% allowed_local_ids
+        x@spatVector <- sv[keep, ]
+        if (!is.null(x@spatVectorCentroids)) {
+            cv <- x@spatVectorCentroids
+            keep_c <- terra::values(cv)$poly_ID %in% allowed_local_ids
+            x@spatVectorCentroids <- cv[keep_c, ]
+        }
+        return(x)
+    }
+    x
+}
+
 #' @rdname getSpatialLocations
 #' @export
 setMethod("getSpatialLocations", signature("giottoMulti"),
     function(gobject, object = NULL, ..., samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
+        args <- list(...)
+        su <- args$spat_unit %||% set_default_spat_unit(gobject)
         out <- lapply(objs, function(nm) {
             getSpatialLocations(gobject@objects[[nm]], ...)
         })
         names(out) <- objs
-        out
+        .gm_narrow_child_outputs(out, gobject, su)
     }
 )
 
@@ -2099,11 +2170,13 @@ setMethod("setSpatialLocations", signature("giottoMulti"),
 setMethod("getSpatialNetwork", signature("giottoMulti"),
     function(gobject, object = NULL, ..., samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
+        args <- list(...)
+        su <- args$spat_unit %||% set_default_spat_unit(gobject)
         out <- lapply(objs, function(nm) {
             getSpatialNetwork(gobject@objects[[nm]], ...)
         })
         names(out) <- objs
-        out
+        .gm_narrow_child_outputs(out, gobject, su)
     }
 )
 
@@ -2123,11 +2196,16 @@ setMethod("setSpatialNetwork", signature("giottoMulti"),
 setMethod("getPolygonInfo", signature("giottoMulti"),
     function(gobject, object = NULL, ..., samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
+        args <- list(...)
+        # polygon_name arg is poly_info's analogue of spat_unit for
+        # narrowing — falls back to default spat_unit when absent.
+        su <- args$polygon_name %||% args$spat_unit %||%
+            set_default_spat_unit(gobject)
         out <- lapply(objs, function(nm) {
             getPolygonInfo(gobject@objects[[nm]], ...)
         })
         names(out) <- objs
-        out
+        .gm_narrow_child_outputs(out, gobject, su)
     }
 )
 

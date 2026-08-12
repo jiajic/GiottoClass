@@ -213,15 +213,21 @@ a `giottoMulti`:
   across all samples. Use `cell_color = "list_ID"` to color points by
   sample of origin.
 
-## Relationship to other containers
+## `giottoMulti` or `joinGiottoObjects()`?
 
-| | giottoMulti | `joinGiottoObjects` | Seurat v5 layers | SCE / SpatialExperiment |
-|---|---|---|---|---|
-| Per-sample addressability | ✅ | ❌ (merged) | partial | by `sample_id` filter |
-| Per-sample spatial state | ✅ rich | merged with offsets | thin | thin |
-| Federated on-disk per sample | ✅ via `@source` | ❌ (merged) | ❌ | ❌ |
-| Per-sample standalone analysis | ✅ (child is full giotto) | ❌ | ❌ | partial |
-| Subset semantics | eager on joint axis, value-semantic undo | destructive | destructive | destructive |
-| Joint analysis layer | ✅ | inherent | via JoinLayers | inherent |
+Both put several samples into one workflow, but they differ in what they keep.
 
-`giottoMulti` and `joinGiottoObjects()` are siblings, not nested: one preserves per-sample spaces, the other merges. Convert between them when needed.
+| | `giottoMulti` | `joinGiottoObjects()` |
+|---|---|---|
+| Per-sample addressability | ✅ `samples =` / `"sample::name"` | ❌ merged into one ID space |
+| Per-sample spatial state | ✅ each child keeps its own frame | merged with coordinate offsets |
+| Federated on-disk per sample | ✅ via `@source` | ❌ merged |
+| Per-sample standalone analysis | ✅ each child is a full `giotto` | ❌ |
+| Subset semantics | narrows the joint axis; original untouched (value semantics) | destructive |
+| Joint analysis layer | ✅ joint slots | inherent — there is only one object |
+
+They are siblings, not nested: one preserves per-sample spaces, the other merges them.
+Pick `giottoMulti` when per-sample identity stays load-bearing through the analysis —
+QC, normalization, integration, faceted plots, cohort comparisons. Pick
+`joinGiottoObjects()` when the samples genuinely become one specimen and you want a
+single coordinate space. Convert between them when needed.
