@@ -2,12 +2,12 @@
 % Please edit documentation in R/slot_accessors.R
 \name{getFeatureMetadata}
 \alias{getFeatureMetadata}
-\alias{getFeatureMetadata,giotto-method}
+\alias{getFeatureMetadata,gAny-method}
 \title{getFeatureMetadata}
 \usage{
-getFeatureMetadata(gobject, ...)
+getFeatureMetadata(gobject, spat_unit = NULL, feat_type = NULL, ...)
 
-\S4method{getFeatureMetadata}{giotto}(
+\S4method{getFeatureMetadata}{gAny}(
   gobject,
   spat_unit = NULL,
   feat_type = NULL,
@@ -19,11 +19,11 @@ getFeatureMetadata(gobject, ...)
 \arguments{
 \item{gobject}{giotto object}
 
-\item{...}{additional params to pass}
-
 \item{spat_unit}{spatial unit (e.g. "cell")}
 
 \item{feat_type}{feature type (e.g. "rna", "dna", "protein")}
+
+\item{...}{additional params to pass}
 
 \item{output}{return as either 'data.table' or 'featMetaObj'}
 

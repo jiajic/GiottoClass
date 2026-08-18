@@ -2,18 +2,18 @@
 % Please edit documentation in R/slot_accessors.R
 \name{getDimReduction}
 \alias{getDimReduction}
-\alias{getDimReduction,giotto-method}
+\alias{getDimReduction,gAny-method}
 \title{Get dimension reduction}
 \usage{
-getDimReduction(gobject, ...)
+getDimReduction(gobject, spat_unit = NULL, feat_type = NULL, name = NULL, ...)
 
-\S4method{getDimReduction}{giotto}(
+\S4method{getDimReduction}{gAny}(
   gobject,
   spat_unit = NULL,
   feat_type = NULL,
+  name = NULL,
   reduction = c("cells", "feats"),
   reduction_method = NULL,
-  name = NULL,
   output = c("dimObj", "matrix"),
   set_defaults = TRUE
 )
@@ -21,17 +21,17 @@ getDimReduction(gobject, ...)
 \arguments{
 \item{gobject}{giotto object}
 
-\item{...}{additional params to pass}
-
 \item{spat_unit}{spatial unit (e.g. "cell")}
 
 \item{feat_type}{feature type (e.g. "rna", "dna", "protein")}
 
+\item{name}{name of reduction results}
+
+\item{...}{additional params to pass}
+
 \item{reduction}{reduction on cells or features (e.g. "cells", "feats")}
 
 \item{reduction_method}{reduction method (e.g. "pca", "umap", "tsne")}
-
-\item{name}{name of reduction results}
 
 \item{output}{object type to return as. Either 'dimObj' (default) or 'matrix'
 of the embedding coordinates.}

@@ -21,6 +21,10 @@
   `kNNNetworkParam()`, `sNNNetworkParam()`, and `delaunayNetworkParam()`
   configure `createNetwork()` calls. The legacy `type` string arg is
   superseded by passing a `*NetworkParam` object.
+- `spatRelate()` generic — filter-form complement to `relate()`: returns `x`
+  narrowed by a spatial predicate rather than a relation matrix. Eager method
+  on `(giottoSpatial, giottoSpatial)` wraps `relate() + subset`; the on-disk
+  lazy form lives in GiottoDisk via methods on `parquetGeomBase`.
 
 ## changes
 
@@ -55,7 +59,64 @@
   `rescale()`, `affine()`) are no longer defined on `spatialNetworkObj`.
   Graph topology is invariant under these transforms; gobject-level
   walkers skip the spatial-network slot.
+- `create_average_detection_DT()` removed. No callers remained in the suite
+  once Giotto's gini markers moved onto
+  `analyzeData(x, analyzeParam("feat_stats"), groups = )`, whose `perc_cells`
+  column is the same statistic. `create_average_DT()` is retained because
+  `create_cluster_matrix()` needs it and GiottoClass cannot depend on Giotto,
+  but it duplicates that verb's `mean_expr` and should not be used in new code.
 
+## bug fixes
+
+- `create_average_DT()` now selects each group's cells by `cell_ID` rather than
+  by position. It fetches the expression matrix and the cell metadata
+  independently, and nothing guarantees the two share a cell order. Where they
+  diverged, cells were labelled with another cell's group. **Results will
+  change for affected objects**; they were wrong before.
+- fix "unused argument (ids = FALSE)" when subsetting a `giottoPolygon` object
+- skip 0-entry `giottoPoints` in subset paths
+- documentation fix in `methods-extract`
+
+## enhancements
+
+- `addCellMetadata()` and `addFeatMetadata()` now auto-detect a `cell_ID` /
+  `feat_ID` column on `new_metadata` (including the column auto-added from a
+  named vector) and route through key-based merge regardless of the caller's
+  `by_column` value. Positional `cbind` is fragile when input row order does
+  not match metadata row order; the key-based path is safe by construction.
+  Positional input without a key column still works for backwards compatibility
+  but now emits a warning so callers can opt in to safe alignment.
+- Slot-accessor S4 generics widened with contract-stable formals
+  (`spat_unit`, `feat_type`, `name`, `polygon_name`) so IDE autocomplete
+  surfaces them past `gobject`. Setter method defaults for `name`
+  (`"raw"`, `"pca"`, `"sNN.pca"`, `"enrichment"`, `"cell"`) moved out of
+  the formals and into an explicit body-side fallback after
+  `read_s4_nesting()`, allowing `name` on the generic without breaking
+  the "user-supplied vs subobject-derived" resolution. `match.call`-based
+  detection replaced with plain `is.null(name)` throughout.
+- `getExpression` adopts `name` as the canonical formal alongside
+  `values` (now a back-compat alias); they error if both supplied and
+  differ.
+- accessor generic formals aligned to one shared contract. Three generics
+  deviated from it, which mattered once the formals moved onto the generics
+  (S4 requires methods to match the generic's shared formal names and order,
+  so the odd ones out could not be written against the common contract):
+  `setMultiomics(result=)` and `setGiottoImage(image=)` are now `x` like every
+  other setter, and `getPolygonInfo(polygon_name=)` is now `name`. The old
+  names remain as deprecated aliases via `deprecate_param()` and continue to
+  work with a warning. Positional calls are unaffected. Following the existing
+  convention (`calculateOverlap(spatial_info)`, `getExpression(values)`), the
+  aliases live on the methods only and reach them through the generic's
+  `...`, so dispatch signatures are unchanged.
+- `image_type` formal removed from `getGiottoImage()`, `setGiottoImage()`,
+  `plotGiottoImage()`, and `distGiottoImage()`. The param had been
+  deprecated for a long time and was a no-op in all four: the accessors
+  never read it, `plotGiottoImage()` overwrote any supplied value by
+  inspecting the class of the fetched image, and `distGiottoImage()`
+  accepted only its default `"largeImage"`. Image class is determined from
+  the object itself. Note this does not affect the `img_type` argument of
+  `list_images()` / `list_images_names()`, which is a working filter and
+  is retained.
 
 # GiottoClass 0.5.1 (2026/05/14)
 

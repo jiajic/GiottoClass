@@ -2,12 +2,18 @@
 % Please edit documentation in R/slot_accessors.R
 \name{getSpatialEnrichment}
 \alias{getSpatialEnrichment}
-\alias{getSpatialEnrichment,giotto-method}
+\alias{getSpatialEnrichment,gAny-method}
 \title{Get spatial enrichment}
 \usage{
-getSpatialEnrichment(gobject, ...)
+getSpatialEnrichment(
+  gobject,
+  spat_unit = NULL,
+  feat_type = NULL,
+  name = NULL,
+  ...
+)
 
-\S4method{getSpatialEnrichment}{giotto}(
+\S4method{getSpatialEnrichment}{gAny}(
   gobject,
   spat_unit = NULL,
   feat_type = NULL,
@@ -20,13 +26,13 @@ getSpatialEnrichment(gobject, ...)
 \arguments{
 \item{gobject}{giotto object}
 
-\item{...}{additional params to pass}
-
 \item{spat_unit}{spatial unit (e.g. "cell")}
 
 \item{feat_type}{feature type (e.g. "rna", "dna", "protein")}
 
 \item{name}{name of spatial enrichment results. Default "DWLS"}
+
+\item{...}{additional params to pass}
 
 \item{output}{what format in which to get information (e.g. "data.table")}
 

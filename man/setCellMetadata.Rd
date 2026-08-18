@@ -2,12 +2,12 @@
 % Please edit documentation in R/slot_accessors.R
 \name{setCellMetadata}
 \alias{setCellMetadata}
-\alias{setCellMetadata,giotto-method}
+\alias{setCellMetadata,gAny-method}
 \title{Set cell metadata}
 \usage{
-setCellMetadata(gobject, ...)
+setCellMetadata(gobject, x, spat_unit = NULL, feat_type = NULL, ...)
 
-\S4method{setCellMetadata}{giotto}(
+\S4method{setCellMetadata}{gAny}(
   gobject,
   x,
   spat_unit = NULL,
@@ -21,14 +21,14 @@ setCellMetadata(gobject, ...)
 \arguments{
 \item{gobject}{giotto object}
 
-\item{...}{additional params to pass}
-
 \item{x}{cellMetaObj or list of cellMetaObj to set. Passing NULL will
 reset a specified set of cell metadata in the giotto object.}
 
 \item{spat_unit}{spatial unit (e.g. "cell")}
 
 \item{feat_type}{feature type (e.g. "rna", "dna", "protein")}
+
+\item{...}{additional params to pass}
 
 \item{provenance}{provenance information (optional)}
 

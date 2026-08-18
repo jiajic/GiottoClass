@@ -2,12 +2,12 @@
 % Please edit documentation in R/slot_accessors.R
 \name{getMultiomics}
 \alias{getMultiomics}
-\alias{getMultiomics,giotto-method}
+\alias{getMultiomics,gAny-method}
 \title{Get multiomics integration results}
 \usage{
-getMultiomics(gobject, ...)
+getMultiomics(gobject, spat_unit = NULL, feat_type = NULL, ...)
 
-\S4method{getMultiomics}{giotto}(
+\S4method{getMultiomics}{gAny}(
   gobject,
   spat_unit = NULL,
   feat_type = NULL,
@@ -35,7 +35,7 @@ Get a multiomics integration result from a Giotto object
 \examples{
 g <- GiottoData::loadGiottoMini("visium")
 g <- setMultiomics(
-    gobject = g, result = matrix(rnorm(100), nrow = 10),
+    gobject = g, x = matrix(rnorm(100), nrow = 10),
     spat_unit = "cell", feat_type = "rna_protein"
 )
 
