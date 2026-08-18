@@ -31,6 +31,33 @@ combineMetadata <- function(gobject,
     # DT vars
     cell_ID <- NULL
 
+    # giottoMulti: dispatch only when per-child spatial slots are being
+    # combined. When `spat_loc_name = NULL`, this function only touches
+    # joint @cell_metadata (+ optional joint enrichment) — both already
+    # come as single DTs via the gmulti's joint getters, so fall through
+    # to the standard path with no per-child walk.
+    # Otherwise: per-child loop with joint-metadata injection, returns a
+    # named list of per-sample combined DTs (each in its own coord frame).
+    if (inherits(gobject, "giottoMulti") && !is.null(spat_loc_name)) {
+        children <- names(gobject@objects)
+        out <- lapply(children, function(nm) {
+            child <- .gm_inject_joint_metadata(
+                mg = gobject,
+                child_g = gobject@objects[[nm]],
+                child_name = nm
+            )
+            combineMetadata(child,
+                spat_unit = spat_unit,
+                feat_type = feat_type,
+                spat_loc_name = spat_loc_name,
+                spat_enr_names = spat_enr_names,
+                verbose = verbose
+            )
+        })
+        names(out) <- children
+        return(out)
+    }
+
     # Set feat_type and spat_unit
     spat_unit <- set_default_spat_unit(
         gobject = gobject,
@@ -96,6 +123,10 @@ combineMetadata <- function(gobject,
 #' @param gobject Giotto object
 #' @param spat_unit spatial unit
 #' @param feat_type feature type(s)
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. Threaded through to the
+#' underlying `getPolygonInfo` and `getCellMetadata` calls so the
+#' returned table reflects the view-scoped subset.
 #' @details
 #' The returned data.table has the following columns: \cr
 #' \itemize{
@@ -113,7 +144,9 @@ combineMetadata <- function(gobject,
 #' @export
 combineSpatialCellMetadataInfo <- function(gobject,
     spat_unit = NULL,
-    feat_type = NULL) {
+    feat_type = NULL,
+    view = NULL,
+    space = NULL) {
     # combine
     # 1. spatial morphology information ( = polygon)
     # 2. cell metadata
@@ -129,20 +162,36 @@ combineSpatialCellMetadataInfo <- function(gobject,
         feat_type = feat_type
     )
 
-    # get spatial cell information
-    spatial_cell_info <- data.table::as.data.table(
-        gobject@spatial_info[[spat_unit]]
+    # Pre-narrow the gobject for the slots we touch — see notes in
+    # `combineCellData`. One resolver pass, two slots narrowed.
+    if (!is.null(view) || !is.null(space)) {
+        gobject <- materialize(gobject, view, space = space,
+            slots = c("spatial_info", "cell_metadata"))
+        view <- NULL
+        space <- NULL
+    }
+
+    # get spatial cell information via the view-aware getter so
+    # view/space resolution applies before SpatVector coercion.
+    sv <- getPolygonInfo(
+        gobject = gobject,
+        polygon_name = spat_unit,
+        return_giottoPolygon = FALSE
     )
+    spatial_cell_info <- data.table::as.data.table(sv)
 
     colnames(spatial_cell_info)[1] <- "cell_ID"
 
 
     res_list <- list()
     for (feat in unique(feat_type)) {
-        # get spatial cell metadata
-        cell_meta <- pDataDT(gobject,
+        # get spatial cell metadata (view applied via the pre-narrow
+        # materialize call above).
+        cell_meta <- getCellMetadata(
+            gobject = gobject,
             spat_unit = spat_unit,
-            feat_type = feat
+            feat_type = feat,
+            output = "data.table"
         )
 
         # merge
@@ -185,6 +234,12 @@ combineSpatialCellMetadataInfo <- function(gobject,
 #' sometimes produce extent-filling polygons when the original geometry is
 #' problematic or invalid. Set `TRUE` to remove these, based on whether a
 #' polygon fills up most of the x and y range.
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. When supplied, each constituent
+#' subobject is fetched with the view applied (predicate / crop / sample
+#' narrowing) and the space transforms composed, before being combined.
+#' Pass through to plot functions (`view = "tumor_focus"`, etc.) when the
+#' combined table should reflect a view-scoped subset.
 #' @concept combine cell metadata
 #' @returns data.table with combined spatial information
 #' @examples
@@ -203,10 +258,44 @@ combineCellData <- function(gobject,
     ext = NULL,
     xlim = NULL,
     ylim = NULL,
-    remove_background_polygon = TRUE) {
+    remove_background_polygon = TRUE,
+    view = NULL,
+    space = NULL) {
 
     checkmate::assert_numeric(xlim, len = 2L, null.ok = TRUE)
     checkmate::assert_numeric(ylim, len = 2L, null.ok = TRUE)
+
+    # giottoMulti: per-child loop with joint-metadata injection. Returns
+    # a named list of per-sample combined results (each in its own coord
+    # frame). Cross-sample combining is deferred to a future `space=`
+    # form that aligns frames first.
+    if (inherits(gobject, "giottoMulti")) {
+        children <- names(gobject@objects)
+        out <- lapply(children, function(nm) {
+            child <- .gm_inject_joint_metadata(
+                mg = gobject,
+                child_g = gobject@objects[[nm]],
+                child_name = nm
+            )
+            combineCellData(child,
+                feat_type = feat_type,
+                include_spat_locs = include_spat_locs,
+                spat_loc_name = spat_loc_name,
+                include_poly_info = include_poly_info,
+                poly_info = poly_info,
+                include_spat_enr = include_spat_enr,
+                spat_enr_names = spat_enr_names,
+                ext = ext,
+                xlim = xlim,
+                ylim = ylim,
+                remove_background_polygon = remove_background_polygon,
+                view = view,
+                space = space
+            )
+        })
+        names(out) <- children
+        return(out)
+    }
 
     # combine
     # 1. spatial morphology information ( = polygon)
@@ -225,6 +314,30 @@ combineCellData <- function(gobject,
     )
 
 
+    # When view/space are supplied, pre-narrow the gobject ONCE for the
+    # specific slots this combine touches via materialize(slots = ...).
+    # materialize uses one resolver cache internally, so all slot
+    # narrowings here share a single predicate evaluation. Subsequent
+    # getter calls below run with view=NULL/space=NULL on the
+    # already-narrowed gobject — no per-getter resolver work.
+    if (!is.null(view) || !is.null(space)) {
+        need_slots <- character(0L)
+        if (isTRUE(include_spat_locs)) {
+            need_slots <- c(need_slots, "spatial_locs")
+        }
+        if (isTRUE(include_poly_info)) {
+            need_slots <- c(need_slots, "spatial_info")
+        }
+        if (isTRUE(include_spat_enr)) {
+            need_slots <- c(need_slots, "spatial_enrichment")
+        }
+        need_slots <- c(need_slots, "cell_metadata")
+        gobject <- materialize(gobject, view, space = space,
+            slots = need_slots)
+        view <- NULL
+        space <- NULL
+    }
+
     ## spatial locations ##
     if (isTRUE(include_spat_locs)) {
         spat_locs_dt <- getSpatialLocations(
@@ -241,7 +354,8 @@ combineCellData <- function(gobject,
 
     ## spatial poly ##
     if (isTRUE(include_poly_info)) {
-        # get spatial poly information
+        # get spatial poly information. View/space already applied via
+        # the pre-narrowing materialize() pass above (when supplied).
         sv <- getPolygonInfo(
             gobject = gobject,
             polygon_name = poly_info,
@@ -352,6 +466,10 @@ combineCellData <- function(gobject,
 #' @param feat_type feature type
 #' @param spat_unit spatial unit
 #' @param sel_feats selected features (default: NULL or no selection)
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. Threaded through to
+#' `getFeatureInfo` and `getFeatureMetadata` so feature-level view
+#' projections are applied before assembly.
 #' @concept combine feature metadata
 #' @returns data.table with combined spatial feature information
 #' @examples
@@ -362,7 +480,9 @@ combineCellData <- function(gobject,
 combineFeatureData <- function(gobject,
     feat_type = NULL,
     spat_unit = NULL,
-    sel_feats = NULL) {
+    sel_feats = NULL,
+    view = NULL,
+    space = NULL) {
     # data.table variables
     feat_ID <- NULL
 
@@ -375,6 +495,15 @@ combineFeatureData <- function(gobject,
         spat_unit = spat_unit,
         feat_type = feat_type
     )
+
+    # Pre-narrow the gobject for the slots we touch — see
+    # `combineCellData` notes.
+    if (!is.null(view) || !is.null(space)) {
+        gobject <- materialize(gobject, view, space = space,
+            slots = c("feat_info", "feat_metadata"))
+        view <- NULL
+        space <- NULL
+    }
 
     res_list <- list()
     for (feat in unique(feat_type)) {
@@ -446,6 +575,11 @@ combineFeatureData <- function(gobject,
 #' @param feat_type feature type
 #' @param sel_feats selected features (default: NULL or no selection)
 #' @param poly_info polygon information name
+#' @param view,space optional [giottoView-class] / [giottoSpace-class] or
+#' the name of one slotted on `gobject`. Threaded through the underlying
+#' getFeatureMetadata / getPolygonInfo / getFeatureInfo calls — the
+#' returned table reflects the view-scoped subset. One resolver pass is
+#' shared via `materialize(slots = ...)` so the predicate evaluates once.
 #' @concept combine feature metadata
 #' @returns data.table with combined spatial polygon information
 #' @examples
@@ -456,7 +590,9 @@ combineFeatureData <- function(gobject,
 combineFeatureOverlapData <- function(gobject,
     feat_type = "rna",
     sel_feats = NULL,
-    poly_info = "cell") {
+    poly_info = "cell",
+    view = NULL,
+    space = NULL) {
     # data.table vars
     feat_ID <- NULL
 
@@ -469,6 +605,14 @@ combineFeatureOverlapData <- function(gobject,
         spat_unit = poly_info,
         feat_type = feat_type
     )
+
+    # Pre-narrow once for the slots we touch.
+    if (!is.null(view) || !is.null(space)) {
+        gobject <- materialize(gobject, view, space = space,
+            slots = c("feat_metadata", "spatial_info", "feat_info"))
+        view <- NULL
+        space <- NULL
+    }
 
 
     res_list <- list()

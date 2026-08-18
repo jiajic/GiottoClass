@@ -1,0 +1,233 @@
+---
+title: "giottoMulti: multi-sample container"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{giottoMulti: multi-sample container}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>"
+)
+```
+
+## What it is
+
+`giottoMulti` is a container for **multiple `giotto` objects analyzed in a shared expression space**. Each child keeps its own spatial information (different physical / embedding spaces); shared analyses (joint normalization, dim reduction, NN graphs, clustering, integration) live on the parent.
+
+Two design properties worth knowing up front:
+
+- **Federated, not monolithic.** Each child can carry its own on-disk source via `@source`; the multi adds one parent-level source for cross-sample joint artifacts. Samples can be archived, versioned, or handed off independently — the whole multi doesn't have to live in one container.
+- **Per-sample analysis surface.** Every child is a full `giotto` object usable standalone. Per-sample QC, normalization, clustering, etc. pre-integration uses the same API as single-sample analysis. The multi adds the joint layer; it doesn't replace the per-sample API.
+
+This is distinct from `joinGiottoObjects()`, which merges multiple giottos into one — destructive, loses per-sample addressability.
+
+## When to use it
+
+Use `giottoMulti` when you have several spatial datasets (e.g. Visium slides, MERFISH samples) that share a feature panel and you want to:
+
+* run joint expression-space analysis across them
+* address each sample independently for per-sample operations (transforms, plotting, QC)
+* iterate on subsets / filters without re-running integration each time
+* keep the option of merging into a single `giotto` later via `joinGiottoObjects()`
+
+## Construction
+
+```{r}
+library(GiottoClass)
+
+# Two minimal samples, same feature panel
+.mk <- function(ncell, nfeat) {
+    m <- matrix(0, nrow = nfeat, ncol = ncell)
+    rownames(m) <- paste0("f", seq_len(nfeat))
+    colnames(m) <- paste0("c", seq_len(ncell))
+    createGiottoObject(expression = m, verbose = FALSE)
+}
+g1 <- .mk(5, 4)
+g2 <- .mk(3, 4)
+
+mg <- createGiottoMulti(list(visium = g1, viz = g2))
+mg
+```
+
+The `show` output surfaces:
+
+* the children and their cell / feature counts
+* the current view: how many cells / features are visible vs total
+* which joint shared slots are populated
+
+## Global vs local IDs
+
+Children's cell IDs are *local* (`c1`, `c2`, …). The multi namespaces them as **`sample::id`** globals via `@id_map`:
+
+```{r}
+spatIDs(mg)
+spatIDs(mg, local = TRUE)
+spatIDs(mg, object = "visium")
+```
+
+Feature IDs are passthrough by default — the feature panel is shared vocabulary across children.
+
+### Sample identity as a column
+
+When pulling values from the multi via `spatValues()`, sample identity is
+surfaced as a `list_ID` column alongside `cell_ID` — handy for downstream
+grouping / faceting without re-parsing the namespaced ID:
+
+```{r}
+# Pull a feature across all samples
+sv <- spatValues(mg, feats = "f1")
+sv
+
+# list_ID lets you group / split / color by sample
+table(sv$list_ID)
+```
+
+This column is added only when `gobject` is a `giottoMulti`; on a plain
+`giotto`, `spatValues()` returns just `cell_ID + feats`. The same applies
+to multi-feat fetches and metadata-column fetches: any `spatValues()` call
+on a gmulti carries `list_ID`.
+
+## Joint expression: assembly then override
+
+`getExpression(mg)` has two modes depending on whether `mg@expression` has been written to:
+
+- **Empty (default after construction)** → assembles a baseline view live from the children: each child's matching `exprObj`, columns renamed to `sample::id`, features intersected, then `cbind`. Useful for QC and inspection before any batch correction has been run.
+- **Populated** → reads directly from `mg@expression`. The slot is authoritative; the assembly path is no longer used.
+
+```{r}
+# Empty: assembled from children
+e <- getExpression(mg)
+dim(e[])
+colnames(e[])
+```
+
+The same destructive-at-first-write lifecycle applies to `@cell_metadata` and `@feat_metadata`: assembled live while empty, materialized on the first `setCellMetadata` / `setFeatureMetadata` call, after which child edits no longer propagate to the multi's view.
+
+After running integration (Harmony, scVI, Symphony, etc.) on the assembled matrix, write the corrected joint matrix back via `setExpression(mg, joint_matrix)` — that's the transition into "populated" mode.
+
+## Subset
+
+`subset()` narrows the joint analysis view of the multi — eagerly: `@id_map` and every *already-populated* joint slot are trimmed in place. Empty joint slots stay empty (subset is a free op on them; assembly later intersects with the narrower `@id_map` automatically). Children (the spatial axis) are not touched.
+
+```{r}
+mg_qc <- subset(mg, cells = c("visium::c1", "visium::c2", "viz::c1"))
+mg_qc
+
+# Reads reflect the narrowed view
+ncol(getExpression(mg_qc)[])
+
+# Children are untouched — their full spatial state is still there
+length(spatIDs(mg_qc@objects$visium))
+```
+
+To widen back to the full view, use the pre-subset object — `subset()` returns a new `giottoMulti`, so the original `mg` is unchanged:
+
+```{r}
+# original is untouched (R copy-on-modify)
+spatIDs(mg)
+```
+
+If you need a child's spatial state narrowed to a current view, do that on the child explicitly via `@id_map` lookups.
+
+## Per-child operations
+
+Spatial-domain accessors take an `object =` argument to scope per child. Children are returned as-is — `subset()` on the multi narrows the joint analysis view, not children's spatial state.
+
+```{r}
+# Spatial locations for one specific child
+getSpatialLocations(mg, object = "visium")
+
+# All children — returns a named list
+sl_all <- getSpatialLocations(mg)
+names(sl_all)
+```
+
+Per-child setters require an explicit `object =` target:
+
+```{r, eval=FALSE}
+setSpatialLocations(mg, x = my_locs, object = "visium")
+setPolygonInfo(mg, x = my_polys, object = "viz")
+```
+
+## Slicing a smaller multi
+
+To carve out a giottoMulti with a subset of the children, slice with `[`:
+
+```{r}
+mg_one <- mg["visium"]
+names(mg_one)
+spatIDs(mg_one)
+```
+
+There is no stateful "active" pointer to flip — every per-child operation takes an explicit `object =`, so scope is always at the call site. For one-off per-child queries, prefer `spatIDs(mg, object = "visium")` over `spatIDs(mg["visium"])`.
+
+> **Side note: single-object wrap.** `as(g, "giottoMulti")` will coerce a single `giotto` into a one-child `giottoMulti`. This is mostly here so downstream code that branches on `giotto` vs `giottoMulti` can operate uniformly when handed a single sample. For interactive use on one sample, just work with the `giotto` directly.
+
+## Realigning after manual edits
+
+If you edit a child directly (e.g. by replacing it with `mg[["a"]] <- new_g` or by mutating a slot outside the approved op surface), the cached `@id_map` may be out of sync. `initialize(mg)` re-detects via the cached length signature and rebuilds when needed — cheap on every call, no-op when nothing changed.
+
+For an exotic same-length-different-content child edit, just reconstruct: `createGiottoMulti(mg@objects, source = mg@source)` starts fresh, no cached signature.
+
+## Filtering and reframing without mutation
+
+To narrow which cells / features a downstream analysis sees, or to apply
+coordinate-frame transforms across children, use `giottoView` and
+`giottoSpace` recipes. Both compose naturally with `giottoMulti`:
+
+* A view's `selectSamples()` step picks which children participate.
+* A space binds transforms to named samples for cross-sample layouts
+  (e.g. positioning visium_a and visium_b side-by-side).
+* `materialize(mg, view, space)` runs the recipe once across the multi
+  and reuses the survivor-cache across downstream getter calls.
+
+See `vignette("view_and_space", package = "GiottoClass")` for the full
+walkthrough.
+
+## Analysis and plotting
+
+The joint analysis layer (normalize / runPCA / runUMAP / clustering /
+integration) lives in the `Giotto` analysis package, not here. Those
+generics operate on the assembled expression matrix and write the
+corrected / reduced result back to the multi's joint slots
+(`@expression`, `@dimension_reduction`), at which point downstream reads
+flip from "assembled live" to "joint slot is authoritative" (see "Joint
+expression" above).
+
+Plotting lives in `GiottoVisuals` and falls into two patterns when handed
+a `giottoMulti`:
+
+* **Spatial plots** (`spatPlot2D`, `spatInSituPlotPoints`, ...) dispatch
+  per-child via cowplot panels. Pass `space = ":all:"` (the default) for
+  one panel per sample, or `space = c("visium_a", ...)` for a subset.
+  Cross-sample defined-space panels (multiple children in one panel under
+  a shared coord frame) require a `giottoSpace`-based flatten layer that
+  is still under development.
+* **Non-spatial plots** (`dotPlot`, `violinPlot`, `dimPlot2D`, `plotUMAP`,
+  heatmap family) pull data via gmulti-aware getters (`spatValues`,
+  `getCellMetadata`, `getDimReduction`) and render one unified plot
+  across all samples. Use `cell_color = "list_ID"` to color points by
+  sample of origin.
+
+## `giottoMulti` or `joinGiottoObjects()`?
+
+Both put several samples into one workflow, but they differ in what they keep.
+
+| | `giottoMulti` | `joinGiottoObjects()` |
+|---|---|---|
+| Per-sample addressability | ✅ `samples =` / `"sample::name"` | ❌ merged into one ID space |
+| Per-sample spatial state | ✅ each child keeps its own frame | merged with coordinate offsets |
+| Federated on-disk per sample | ✅ via `@source` | ❌ merged |
+| Per-sample standalone analysis | ✅ each child is a full `giotto` | ❌ |
+| Subset semantics | narrows the joint axis; original untouched (value semantics) | destructive |
+| Joint analysis layer | ✅ joint slots | inherent — there is only one object |
+
+They are siblings, not nested: one preserves per-sample spaces, the other merges them.
+Pick `giottoMulti` when per-sample identity stays load-bearing through the analysis —
+QC, normalization, integration, faceted plots, cohort comparisons. Pick
+`joinGiottoObjects()` when the samples genuinely become one specimen and you want a
+single coordinate space. Convert between them when needed.

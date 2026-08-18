@@ -101,7 +101,7 @@ setMethod(
 #' @rdname giotto_instructions
 #' @export
 setMethod(
-    "instructions", signature(gobject = "giotto", param = "missing"),
+    "instructions", signature(gobject = "gAny", param = "missing"),
     function(gobject) {
         return(showGiottoInstructions(gobject))
     }
@@ -112,7 +112,7 @@ setMethod(
 #' @rdname giotto_instructions
 #' @export
 setMethod(
-    "instructions", signature(gobject = "giotto", param = "character"),
+    "instructions", signature(gobject = "gAny", param = "character"),
     function(gobject, param) {
         instrs <- showGiottoInstructions(gobject = gobject)
         return(readGiottoInstructions(
@@ -137,7 +137,7 @@ setMethod(
 setMethod(
     "instructions<-",
     signature(
-        gobject = "giotto",
+        gobject = "gAny",
         param = "missing", initialize = "missing", value = "ANY"
     ),
     function(gobject, initialize, value) {
@@ -153,7 +153,7 @@ setMethod(
 setMethod(
     "instructions<-",
     signature(
-        gobject = "giotto",
+        gobject = "gAny",
         param = "missing", initialize = "logical", value = "ANY"
     ),
     function(gobject, initialize, value) {
@@ -172,7 +172,7 @@ setMethod(
 setMethod(
     "instructions<-",
     signature(
-        gobject = "giotto",
+        gobject = "gAny",
         param = "character", initialize = "missing", value = "ANY"
     ),
     function(gobject, param, initialize, value) {
@@ -191,7 +191,7 @@ setMethod(
 setMethod(
     "instructions<-",
     signature(
-        gobject = "giotto",
+        gobject = "gAny",
         param = "character", initialize = "logical", value = "ANY"
     ),
     function(gobject, param, initialize, value) {
@@ -246,6 +246,19 @@ setMethod(
     }
 )
 
+#' @rdname activeSpatUnit-generic
+#' @export
+setMethod("activeSpatUnit", signature(gobject = "giottoMulti"),
+    function(gobject) {
+        # Derive live from each child — no cache, so re-attached or mutated
+        # children always reflect their current state.
+        vapply(gobject@objects, function(g) {
+            res <- tryCatch(activeSpatUnit(g), error = function(e) NA_character_)
+            if (is.null(res)) NA_character_ else res
+        }, character(1L))
+    }
+)
+
 
 ## activeFeatType ####
 setGeneric(
@@ -273,5 +286,16 @@ setMethod(
     function(gobject, value) {
         instructions(gobject, "active_feat_type") <- value
         return(gobject)
+    }
+)
+
+#' @rdname activeFeatType-generic
+#' @export
+setMethod("activeFeatType", signature(gobject = "giottoMulti"),
+    function(gobject) {
+        vapply(gobject@objects, function(g) {
+            res <- tryCatch(activeFeatType(g), error = function(e) NA_character_)
+            if (is.null(res)) NA_character_ else res
+        }, character(1L))
     }
 )

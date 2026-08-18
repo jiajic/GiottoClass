@@ -19,7 +19,10 @@ tests/testthat/*.pdf
 # agent-private scratch (shipped doc lives in AGENTS.md)
 CLAUDE.md
 
-# rendered articles (build artifacts; only the .Rmd is tracked)
+# rendered vignettes + articles (build artifacts; only the .Rmd is tracked)
+vignettes/*.html
+vignettes/*_files/
+vignettes/*_cache/
 vignettes/articles/*.html
 vignettes/articles/*_files/
 vignettes/articles/*_cache/

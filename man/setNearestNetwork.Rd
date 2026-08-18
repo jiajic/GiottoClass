@@ -5,7 +5,9 @@
 \alias{setNearestNetwork,gAny-method}
 \title{Set nearest neighbor network}
 \usage{
-setNearestNetwork(
+setNearestNetwork(gobject, ...)
+
+\S4method{setNearestNetwork}{gAny}(
   gobject,
   x,
   spat_unit = NULL,

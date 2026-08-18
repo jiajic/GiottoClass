@@ -84,6 +84,12 @@ protein, metabolites, ... that are provided in the expression slot.}
 
 \item{\code{h5_file}}{path to h5 file}
 
+\item{\code{view}}{named list of slotted \code{giottoView} recipes (read-only
+subset/narrowing). See \link[=giottoView-class]{giottoView}.}
+
+\item{\code{spaces}}{named list of slotted \code{giottoSpace} recipes (opt-in
+coordinate-frame transforms). See \link[=giottoSpace-class]{giottoSpace}.}
+
 \item{\code{misc}}{miscellaneous or unstructured data}
 }}
 

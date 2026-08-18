@@ -153,6 +153,13 @@ setMethod(
         if (length(x@unique_ID_cache) == 0) {
             stop(wrap_txt("No geometries to plot"), call. = FALSE)
         }
+        # Parquet-backed: defer to GiottoDisk's plot(parquetGeomBase, missing).
+        # The parquet plot method routes polygons to the vector path
+        # (storeRead -> SpatVector -> terra::plot), since `rasterize` is
+        # points-only and polygon plots are usually wanted as geometry.
+        if (inherits(x[], "parquetGeomBase")) {
+            return(plot(x[], ...))
+        }
 
         # if greater than max_poly, simplify to centroid
         if (nrow(x) > max_poly &&
@@ -234,7 +241,7 @@ setMethod(
 #' @export
 setMethod(
     "plot", signature(x = "giottoPoints", y = "missing"),
-    function(x, point_size = 0, feats = NULL, raster = TRUE, 
+    function(x, point_size = 0, feats = NULL, raster = TRUE,
         raster_size = 600, count = TRUE, sigma = NULL,
         ...) {
         checkmate::assert_flag(raster)
@@ -246,9 +253,19 @@ setMethod(
         if (length(x@unique_ID_cache) == 0) {
             stop(wrap_txt("No geometries to plot"), call. = FALSE)
         }
+        # Parquet-backed: defer to its own methods
+        if (inherits(x[], "parquetGeomBase")) {
+            return(plot(x[],
+                feats        = feats,
+                raster       = raster,
+                raster_size  = raster_size,
+                count        = count,
+                ...
+            ))
+        }
         .plot_giotto_points(
             x = x, point_size = point_size, feats = feats,
-            raster = raster, raster_size = raster_size, 
+            raster = raster, raster_size = raster_size,
             count = count, sigma = sigma, ...
         )
     }
