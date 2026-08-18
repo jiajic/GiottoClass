@@ -5,9 +5,7 @@
 \alias{getNearestNetwork,gAny-method}
 \title{Get nearest neighbor network}
 \usage{
-getNearestNetwork(gobject, ...)
-
-\S4method{getNearestNetwork}{gAny}(
+getNearestNetwork(
   gobject,
   spat_unit = NULL,
   feat_type = NULL,

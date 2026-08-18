@@ -19,7 +19,14 @@ setSpatialNetwork(gobject, x, spat_unit = NULL, name = NULL, ...)
   ...
 )
 
-\S4method{setSpatialNetwork}{giottoMulti}(gobject, x, object = NULL, ...)
+\S4method{setSpatialNetwork}{giottoMulti}(
+  gobject,
+  x,
+  spat_unit = NULL,
+  name = NULL,
+  ...,
+  object = NULL
+)
 }
 \arguments{
 \item{gobject}{giotto object}

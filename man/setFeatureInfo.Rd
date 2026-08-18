@@ -17,7 +17,7 @@ setFeatureInfo(gobject, x, feat_type = NULL, ...)
   ...
 )
 
-\S4method{setFeatureInfo}{giottoMulti}(gobject, x, object = NULL, ...)
+\S4method{setFeatureInfo}{giottoMulti}(gobject, x, feat_type = NULL, ..., object = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

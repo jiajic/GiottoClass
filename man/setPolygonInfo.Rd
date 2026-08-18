@@ -18,7 +18,7 @@ setPolygonInfo(gobject, x, name = NULL, ...)
   ...
 )
 
-\S4method{setPolygonInfo}{giottoMulti}(gobject, x, object = NULL, ...)
+\S4method{setPolygonInfo}{giottoMulti}(gobject, x, name = NULL, ..., object = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

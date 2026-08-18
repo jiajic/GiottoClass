@@ -3471,8 +3471,8 @@ setMethod("setGiottoImage", signature("giotto"), function(gobject,
 #' @param svkey use a `svkey`. Other params will be ignored. This is just
 #' syntactic sugar for `svkey@get(gobject)`
 #' @param samples character. (giottoMulti only) optional vector of sample
-#' names to narrow the joint output to. Joint slots (@expression,
-#' @cell_metadata) honor this directly; per-child-only slots (spatial
+#' names to narrow the joint output to. Joint slots (`@expression`,
+#' `@cell_metadata`) honor this directly; per-child-only slots (spatial
 #' locations, polygon info) remain inaccessible from `spatValues(mg, ...)`
 #' regardless — use the joint-level slots as the ground truth and avoid
 #' reaching into `mg[[sample]]` for per-child content.

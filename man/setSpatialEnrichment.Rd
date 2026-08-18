@@ -5,9 +5,7 @@
 \alias{setSpatialEnrichment,gAny-method}
 \title{Set spatial enrichment}
 \usage{
-setSpatialEnrichment(gobject, ...)
-
-\S4method{setSpatialEnrichment}{gAny}(
+setSpatialEnrichment(
   gobject,
   x,
   spat_unit = NULL,

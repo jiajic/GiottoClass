@@ -8,15 +8,9 @@
 \usage{
 getGiottoImage(gobject, name = NULL, ...)
 
-\S4method{getGiottoImage}{giotto}(
-  gobject,
-  image_type = NULL,
-  name = NULL,
-  view = NULL,
-  space = NULL
-)
+\S4method{getGiottoImage}{giotto}(gobject, name = NULL, view = NULL, space = NULL)
 
-\S4method{getGiottoImage}{giottoMulti}(gobject, object = NULL, ..., samples = NULL)
+\S4method{getGiottoImage}{giottoMulti}(gobject, name = NULL, ..., object = NULL, samples = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

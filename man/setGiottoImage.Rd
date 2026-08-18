@@ -18,7 +18,7 @@ setGiottoImage(gobject, x, name = NULL, ...)
   image = deprecated()
 )
 
-\S4method{setGiottoImage}{giottoMulti}(gobject, image, object = NULL, ...)
+\S4method{setGiottoImage}{giottoMulti}(gobject, x, name = NULL, ..., object = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}

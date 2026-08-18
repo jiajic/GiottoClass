@@ -16,10 +16,12 @@ getPolygonInfo(gobject, name = NULL, ...)
   verbose = TRUE,
   simplify = TRUE,
   view = NULL,
-  space = NULL
+  space = NULL,
+  ...,
+  polygon_name = deprecated()
 )
 
-\S4method{getPolygonInfo}{giottoMulti}(gobject, object = NULL, ..., samples = NULL)
+\S4method{getPolygonInfo}{giottoMulti}(gobject, name = NULL, ..., object = NULL, samples = NULL)
 }
 \arguments{
 \item{gobject}{giotto object}
@@ -44,6 +46,8 @@ when supplied, returned polygons are narrowed by surviving cell set via
 \item{space}{optional \code{giottoSpace} or character(1) name of a slotted
 space; when supplied, the recorded transforms are applied to the
 returned polygon geometry}
+
+\item{polygon_name}{deprecated. Use \code{name}}
 }
 \value{
 spatVector

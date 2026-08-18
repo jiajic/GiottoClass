@@ -18,7 +18,10 @@ no cell-level filter.}
 \item{...}{not used}
 }
 \value{
-a \code{giottoMulti} with narrowed \verb{@id_map} and trimmed joint slots
+a \code{giottoMulti} with \verb{@cell_ID} / \verb{@feat_ID} narrowed and
+populated joint slots trimmed accordingly. \verb{@id_map} (the identity
+registry) is left untouched — that slot is reserved for view-recipe
+narrowing, not direct subsetting.
 }
 \description{
 Narrow the joint analysis view of the multi to a subset of global cell IDs

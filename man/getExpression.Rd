@@ -23,9 +23,10 @@ getExpression(gobject, spat_unit = NULL, feat_type = NULL, name = NULL, ...)
 
 \S4method{getExpression}{giottoMulti}(
   gobject,
-  values = NULL,
   spat_unit = NULL,
   feat_type = NULL,
+  name = NULL,
+  values = NULL,
   output = c("exprObj", "matrix"),
   set_defaults = TRUE,
   samples = NULL

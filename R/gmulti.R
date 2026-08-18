@@ -1039,7 +1039,7 @@ setMethod("show", "giottoMulti", function(object) {
 #' template (spat_unit, feat_type, name) with its matrix replaced.
 #'
 #' Federation is driven by `@mapping`. The (spat_unit, feat_type) handles
-#' resolve to per-sample child-level slot names via [.gm_resolve_axis];
+#' resolve to per-sample child-level slot names via `.gm_resolve_axis()`;
 #' samples not in both axes' participation sets do not contribute.
 #'
 #' When `@mapping` is empty for an axis (e.g. legacy gmulti without a
@@ -1845,10 +1845,21 @@ setMethod(
 #' @rdname getExpression
 #' @export
 setMethod("getExpression", "giottoMulti",
-    function(gobject, values = NULL, spat_unit = NULL, feat_type = NULL,
-             output = c("exprObj", "matrix"), set_defaults = TRUE,
-             samples = NULL) {
+    function(gobject, spat_unit = NULL, feat_type = NULL, name = NULL,
+             values = NULL, output = c("exprObj", "matrix"),
+             set_defaults = TRUE, samples = NULL) {
         output <- match.arg(output, choices = c("exprObj", "matrix"))
+
+        # `values` is the back-compat alias for `name` — same contract as the
+        # gAny method. Resolved up front so the rest of this body keeps
+        # working off `values`.
+        if (!is.null(name)) {
+            if (!is.null(values) && !identical(name, values)) {
+                stop("getExpression: 'name' and 'values' both supplied but ",
+                    "differ. Use one — 'name' is preferred.", call. = FALSE)
+            }
+            values <- name
+        }
 
         # Parse "sample::name" prefix in values. Resolves to a single
         # sample; conflicts with `samples = ` arg if both are set and
@@ -2142,12 +2153,13 @@ setMethod("getFeatureMetadata", "giottoMulti", function(gobject,
 #' @rdname getSpatialLocations
 #' @export
 setMethod("getSpatialLocations", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., samples = NULL) {
+    function(gobject, spat_unit = NULL, name = NULL, ...,
+        object = NULL, samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
-        args <- list(...)
-        su <- args$spat_unit %||% set_default_spat_unit(gobject)
+        su <- spat_unit %||% set_default_spat_unit(gobject)
         out <- lapply(objs, function(nm) {
-            getSpatialLocations(gobject@objects[[nm]], ...)
+            getSpatialLocations(gobject@objects[[nm]],
+                spat_unit = spat_unit, name = name, ...)
         })
         names(out) <- objs
         .gm_narrow_child_outputs(out, gobject, su)
@@ -2157,10 +2169,11 @@ setMethod("getSpatialLocations", signature("giottoMulti"),
 #' @rdname setSpatialLocations
 #' @export
 setMethod("setSpatialLocations", signature("giottoMulti"),
-    function(gobject, x, object = NULL, ...) {
+    function(gobject, x, spat_unit = NULL, name = NULL, ..., object = NULL) {
         nm <- .gm_set_target(gobject, object)
         gobject@objects[[nm]] <- setSpatialLocations(
-            gobject@objects[[nm]], x = x, ...)
+            gobject@objects[[nm]], x = x,
+            spat_unit = spat_unit, name = name, ...)
         gobject
     }
 )
@@ -2168,12 +2181,13 @@ setMethod("setSpatialLocations", signature("giottoMulti"),
 #' @rdname getSpatialNetwork
 #' @export
 setMethod("getSpatialNetwork", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., samples = NULL) {
+    function(gobject, spat_unit = NULL, name = NULL, ...,
+        object = NULL, samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
-        args <- list(...)
-        su <- args$spat_unit %||% set_default_spat_unit(gobject)
+        su <- spat_unit %||% set_default_spat_unit(gobject)
         out <- lapply(objs, function(nm) {
-            getSpatialNetwork(gobject@objects[[nm]], ...)
+            getSpatialNetwork(gobject@objects[[nm]],
+                spat_unit = spat_unit, name = name, ...)
         })
         names(out) <- objs
         .gm_narrow_child_outputs(out, gobject, su)
@@ -2183,10 +2197,11 @@ setMethod("getSpatialNetwork", signature("giottoMulti"),
 #' @rdname setSpatialNetwork
 #' @export
 setMethod("setSpatialNetwork", signature("giottoMulti"),
-    function(gobject, x, object = NULL, ...) {
+    function(gobject, x, spat_unit = NULL, name = NULL, ..., object = NULL) {
         nm <- .gm_set_target(gobject, object)
         gobject@objects[[nm]] <- setSpatialNetwork(
-            gobject@objects[[nm]], x = x, ...)
+            gobject@objects[[nm]], x = x,
+            spat_unit = spat_unit, name = name, ...)
         gobject
     }
 )
@@ -2194,15 +2209,16 @@ setMethod("setSpatialNetwork", signature("giottoMulti"),
 #' @rdname getPolygonInfo
 #' @export
 setMethod("getPolygonInfo", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., samples = NULL) {
+    function(gobject, name = NULL, ..., object = NULL, samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
+        # `name` is poly_info's analogue of spat_unit for narrowing — falls
+        # back to default spat_unit when absent. (`polygon_name` is the
+        # deprecated alias, still honoured on the child method.)
         args <- list(...)
-        # polygon_name arg is poly_info's analogue of spat_unit for
-        # narrowing — falls back to default spat_unit when absent.
-        su <- args$polygon_name %||% args$spat_unit %||%
+        su <- name %||% args$polygon_name %||% args$spat_unit %||%
             set_default_spat_unit(gobject)
         out <- lapply(objs, function(nm) {
-            getPolygonInfo(gobject@objects[[nm]], ...)
+            getPolygonInfo(gobject@objects[[nm]], name = name, ...)
         })
         names(out) <- objs
         .gm_narrow_child_outputs(out, gobject, su)
@@ -2212,10 +2228,10 @@ setMethod("getPolygonInfo", signature("giottoMulti"),
 #' @rdname setPolygonInfo
 #' @export
 setMethod("setPolygonInfo", signature("giottoMulti"),
-    function(gobject, x, object = NULL, ...) {
+    function(gobject, x, name = NULL, ..., object = NULL) {
         nm <- .gm_set_target(gobject, object)
         gobject@objects[[nm]] <- setPolygonInfo(
-            gobject@objects[[nm]], x = x, ...)
+            gobject@objects[[nm]], x = x, name = name, ...)
         gobject
     }
 )
@@ -2223,10 +2239,11 @@ setMethod("setPolygonInfo", signature("giottoMulti"),
 #' @rdname getFeatureInfo
 #' @export
 setMethod("getFeatureInfo", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., samples = NULL) {
+    function(gobject, feat_type = NULL, ..., object = NULL, samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
         out <- lapply(objs, function(nm) {
-            getFeatureInfo(gobject@objects[[nm]], ...)
+            getFeatureInfo(gobject@objects[[nm]],
+                feat_type = feat_type, ...)
         })
         names(out) <- objs
         out
@@ -2236,10 +2253,10 @@ setMethod("getFeatureInfo", signature("giottoMulti"),
 #' @rdname setFeatureInfo
 #' @export
 setMethod("setFeatureInfo", signature("giottoMulti"),
-    function(gobject, x, object = NULL, ...) {
+    function(gobject, x, feat_type = NULL, ..., object = NULL) {
         nm <- .gm_set_target(gobject, object)
         gobject@objects[[nm]] <- setFeatureInfo(
-            gobject@objects[[nm]], x = x, ...)
+            gobject@objects[[nm]], x = x, feat_type = feat_type, ...)
         gobject
     }
 )
@@ -2247,10 +2264,10 @@ setMethod("setFeatureInfo", signature("giottoMulti"),
 #' @rdname getGiottoImage
 #' @export
 setMethod("getGiottoImage", signature("giottoMulti"),
-    function(gobject, object = NULL, ..., samples = NULL) {
+    function(gobject, name = NULL, ..., object = NULL, samples = NULL) {
         objs <- .gm_resolve_per_child_arg(gobject, object, samples)
         out <- lapply(objs, function(nm) {
-            getGiottoImage(gobject@objects[[nm]], ...)
+            getGiottoImage(gobject@objects[[nm]], name = name, ...)
         })
         names(out) <- objs
         out
@@ -2260,10 +2277,10 @@ setMethod("getGiottoImage", signature("giottoMulti"),
 #' @rdname setGiottoImage
 #' @export
 setMethod("setGiottoImage", signature("giottoMulti"),
-    function(gobject, image, object = NULL, ...) {
+    function(gobject, x, name = NULL, ..., object = NULL) {
         nm <- .gm_set_target(gobject, object)
         gobject@objects[[nm]] <- setGiottoImage(
-            gobject@objects[[nm]], image = image, ...)
+            gobject@objects[[nm]], x = x, name = name, ...)
         gobject
     }
 )

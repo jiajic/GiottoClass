@@ -5,9 +5,7 @@
 \alias{setDimReduction,gAny-method}
 \title{Set dimension reduction data}
 \usage{
-setDimReduction(gobject, ...)
-
-\S4method{setDimReduction}{gAny}(
+setDimReduction(
   gobject,
   x,
   spat_unit = NULL,
