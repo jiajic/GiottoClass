@@ -108,6 +108,7 @@ Collate:
     'generate_poly.R'
     'giotto_structures.R'
     'globals.R'
+    'gmulti.R'
     'gstop.R'
     'images.R'
     'instructions.R'
